@@ -1,0 +1,188 @@
+//
+// https://github.com/SteveKChiu/WebCacheMonk
+//
+// Copyright 2015, Steve K. Chiu <steve.k.chiu@gmail.com>
+//
+// The MIT License (http://www.opensource.org/licenses/mit-license.php)
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+//
+
+import Foundation
+
+//---------------------------------------------------------------------------
+
+public class WebCacheFetcher : WebCacheSource {
+    private var session: NSURLSession!
+    private var bridge: WebCacheFetcherBridge!
+
+    public init(configuration: NSURLSessionConfiguration? = nil) {
+        self.bridge = WebCacheFetcherBridge(fetcher: self)
+        self.session = NSURLSession(configuration: configuration ?? NSURLSessionConfiguration.ephemeralSessionConfiguration(), delegate: self.bridge, delegateQueue: nil)
+    }
+
+    public func fetch(url: String, range: Range<Int>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+        let request = NSMutableURLRequest(URL: NSURL(string: url)!)
+        request.HTTPMethod = "GET"
+        request.setValue("gzip, identity", forHTTPHeaderField: "Accept-Encoding")
+        
+        if let range = range {
+            request.setValue(String(format: "bytes=%d-%d", range.startIndex, range.endIndex - 1), forHTTPHeaderField: "Range")
+        }
+        
+        let task = self.session.dataTaskWithRequest(request)
+        let info = WebCacheFetcherTaskInfo(receiver: receiver, progress: progress)
+        
+        progress?.cancellationHandler = {
+            [weak task] in
+            
+            task?.cancel()
+        }
+        
+        task.fetcherInfo = info
+        task.resume()
+    }
+}
+
+//---------------------------------------------------------------------------
+
+private var NSURLSessionTask_fetcherInfo = 0
+
+private extension NSURLSessionTask {
+    var fetcherInfo: WebCacheFetcherTaskInfo? {
+        get {
+            return objc_getAssociatedObject(self, &NSURLSessionTask_fetcherInfo) as? WebCacheFetcherTaskInfo
+        }
+        set {
+            objc_setAssociatedObject(self, &NSURLSessionTask_fetcherInfo, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+}
+
+private class WebCacheFetcherTaskInfo : NSObject {
+    var receiver: WebCacheReceiver
+    var progress: NSProgress?
+    
+    init(receiver: WebCacheReceiver, progress: NSProgress?) {
+        self.receiver = receiver
+        self.progress = progress
+    }
+}
+
+//---------------------------------------------------------------------------
+
+private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
+    unowned var fetcher: WebCacheFetcher
+
+    init(fetcher: WebCacheFetcher) {
+        self.fetcher = fetcher
+    }
+
+    func abortTask(task: NSURLSessionTask, error: NSError?) {
+        if let info = task.fetcherInfo {
+            info.receiver.onReceiveError(error, progress: info.progress)
+            task.fetcherInfo = nil
+        }
+    }
+
+    @objc func URLSession(session: NSURLSession, dataTask: NSURLSessionDataTask, didReceiveResponse response: NSURLResponse, completionHandler: (NSURLSessionResponseDisposition) -> Void) {
+        guard let info = dataTask.fetcherInfo else {
+            completionHandler(.Cancel)
+            return
+        }
+        
+        if info.progress?.cancelled == true {
+            completionHandler(.Cancel)
+            abortTask(dataTask, error: nil)
+            return
+        }
+        info.progress?.totalUnitCount = response.expectedContentLength
+
+        let receiver = info.receiver
+        var offset = 0
+        var totalLength = Int(response.expectedContentLength)
+        
+        if let http = response as? NSHTTPURLResponse {
+            switch http.statusCode {
+            case 200:
+                break
+                
+            case 204:
+                break
+            
+            case 206:
+                if let range = http.allHeaderFields["Range"] as? NSString {
+                    let rex = try! NSRegularExpression(pattern: "bytes\\s+(\\d+)\\-(\\d+)/(\\d+)", options: [])
+                    let results = rex.matchesInString(range as String, options: [], range: NSRange(0 ..< Int(range.length)))
+                    if results[0].range.location != NSNotFound {
+                        offset = Int(range.substringWithRange(results[0].range))!
+                    }
+                    if results[2].range.location != NSNotFound {
+                        totalLength = Int(range.substringWithRange(results[2].range))!
+                    }
+                }
+                break
+            
+            case 404:
+                completionHandler(.Cancel)
+                abortTask(dataTask, error: nil)
+                return
+            
+            default:
+                let error = NSError(domain: "WebCache", code: http.statusCode, userInfo: [
+                    NSURLErrorKey: response.URL!,
+                    NSLocalizedDescriptionKey: NSHTTPURLResponse.localizedStringForStatusCode(http.statusCode)
+                ])
+                completionHandler(.Cancel)
+                abortTask(dataTask, error: error)
+                return
+            }
+        }
+        
+        receiver.onReceiveResponse(response, offset: offset, totalLength: totalLength, progress: info.progress)
+        completionHandler(.Allow)
+    }
+
+    @objc func URLSession(session: NSURLSession, dataTask: NSURLSessionDataTask, didReceiveData data: NSData) {
+        if let info = dataTask.fetcherInfo {
+            if info.progress?.cancelled == true {
+                abortTask(dataTask, error: nil)
+            } else {
+                info.receiver.onReceiveData(data, progress: info.progress)
+                info.progress?.completedUnitCount += Int64(data.length)
+            }
+        }
+    }
+    
+    @objc func URLSession(session: NSURLSession, task: NSURLSessionTask, didCompleteWithError error: NSError?) {
+        if let info = task.fetcherInfo {
+            if let error = error {
+                info.receiver.onReceiveError(error, progress: info.progress)
+            } else {
+                info.receiver.onReceiveEnd(progress: info.progress)
+            }
+            task.fetcherInfo = nil
+        }
+    }
+
+    @objc func URLSession(session: NSURLSession, dataTask: NSURLSessionDataTask, willCacheResponse proposedResponse: NSCachedURLResponse, completionHandler: (NSCachedURLResponse?) -> Void) {
+        completionHandler(nil)
+    }
+}
+
