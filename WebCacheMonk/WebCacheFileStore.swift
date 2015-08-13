@@ -28,50 +28,56 @@ import Foundation
 
 //---------------------------------------------------------------------------
 
-private struct WebCacheFileInfo {
-    var mimeType: String?
-    var textEncoding: String?
-    var totalLength: Int
-    var expiration: WebCacheExpiration
-    
-    func isMatched(that: WebCacheFileInfo) -> Bool {
-        return self.mimeType == that.mimeType
-            && self.textEncoding == that.textEncoding
-            && self.totalLength == that.totalLength
-    }
+public struct WebCacheFileMeta {
+    public var mimeType: String?
+    public var textEncoding: String?
+    public var totalLength: Int
+    public var expiration: WebCacheExpiration
+}
+
+public func == (lhs: WebCacheFileMeta, rhs: WebCacheFileMeta) -> Bool {
+    return lhs.mimeType == rhs.mimeType
+        && lhs.textEncoding == rhs.textEncoding
+        && lhs.totalLength == rhs.totalLength
+}
+
+public func != (lhs: WebCacheFileMeta, rhs: WebCacheFileMeta) -> Bool {
+    return !(lhs == rhs)
 }
 
 //---------------------------------------------------------------------------
 
-public class WebCacheFileStore : WebCacheStore {
-    private var queue: dispatch_queue_t!
-    private var manager: NSFileManager
-    private var root: String
-    
-    public convenience init(name: String? = nil) {
-        let name = name ?? "WebCache"
-        let url = NSFileManager.defaultManager().URLsForDirectory(.CachesDirectory, inDomains: .UserDomainMask).first!
-        let path = url.URLByAppendingPathComponent(name, isDirectory: true).path!
-        self.init(path: path)
-    }
-    
-    public init(path: String) {
-        self.queue = dispatch_queue_create("WebCacheFileStore", DISPATCH_QUEUE_SERIAL)
-        self.manager = NSFileManager()
-        self.root = path.hasSuffix("/") ? path : path + "/"
-        
-        do {
-            try self.manager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
-        } catch let error {
-            NSLog("fail to create cache directory %@, error = %@", path, error as NSError)
-        }
-    }
-    
-    private func filePath(url: String) -> String {
-        return self.root + MD5(url)
+public protocol WebCacheFileInput : class {
+    var length: Int { get }
+    func read(length: Int) throws -> NSData?
+    func close()
+}
+
+public protocol WebCacheFileOutput : class {
+    func write(data: NSData) throws
+    func close()
+}
+
+public protocol WebCacheFileStoreAdapter : class {
+    func getPath(url: String) -> String
+    func getMeta(path: String) -> WebCacheFileMeta?
+    func setMeta(meta: WebCacheFileMeta, forPath: String)
+    func openInput(path: String, range: Range<Int>?) throws -> (WebCacheFileMeta, WebCacheFileInput)?
+    func openOutput(path: String, meta: WebCacheFileMeta, offset: Int) throws -> WebCacheFileOutput?
+    func remove(path: String)
+    func removeAll()
+}
+
+public extension WebCacheFileStoreAdapter {
+    public var fileManager: NSFileManager {
+        return NSFileManager.defaultManager()
     }
 
-    private func getMeta(path: String) -> WebCacheFileInfo? {
+    public func getUrlHash(url: String) -> String {
+        return WebCacheMD5(url)
+    }
+
+    public func getMeta(path: String) -> WebCacheFileMeta? {
         let size = getxattr(path, "WebCache", nil, 0, 0, 0)
         if size <= 0 {
             return nil
@@ -81,51 +87,122 @@ public class WebCacheFileStore : WebCacheStore {
             let data = NSMutableData(length: size)!
             getxattr(path, "WebCache", data.mutableBytes, size, 0, 0)
             let json = try NSJSONSerialization.JSONObjectWithData(data, options: [])
-            let info = WebCacheFileInfo(
+            let meta = WebCacheFileMeta(
                     mimeType: json["m"] as? String,
                     textEncoding: json["t"] as? String,
                     totalLength: (json["l"] as? NSNumber)?.integerValue ?? 0,
                     expiration: .Description(json["e"] as? String))
-            
-            if info.expiration.isExpired {
-                try self.manager.removeItemAtPath(path)
+            if meta.expiration.isExpired {
+                try self.fileManager.removeItemAtPath(path)
                 return nil
             }
-            
-            return info
+            return meta
         } catch {
             return nil
         }
     }
     
-    private func setMeta(path: String, info: WebCacheFileInfo) {
+    public func setMeta(meta: WebCacheFileMeta, forPath path: String) {
         var json = [String: AnyObject]()
-        if let mimeType = info.mimeType {
+        if let mimeType = meta.mimeType {
             json["m"] = mimeType
         }
-        if let textEncoding = info.textEncoding {
+        if let textEncoding = meta.textEncoding {
             json["t"] = textEncoding
         }
-        json["l"] = info.totalLength
-        json["e"] = info.expiration.description
+        json["l"] = meta.totalLength
+        json["e"] = meta.expiration.description
         
         do {
+            if !self.fileManager.fileExistsAtPath(path) {
+                self.fileManager.createFileAtPath(path, contents: nil, attributes: nil)
+            }
             let data = try NSJSONSerialization.dataWithJSONObject(json, options: [])
             setxattr(path, "WebCache", data.bytes, data.length, 0, 0)
-        } catch let error {
+        } catch {
             NSLog("fail to set meta info, error = %@", error as NSError)
         }
     }
+
+    public func remove(path: String) {
+        do {
+            try self.fileManager.removeItemAtPath(path)
+        } catch {
+            NSLog("fail to remove cache file, error = %@", error as NSError)
+        }
+    }
+}
+
+//---------------------------------------------------------------------------
+
+private class WebCacheFileHandleInput : WebCacheFileInput {
+    var handle: NSFileHandle
+    var limit: Int
     
-    private func openInput(path: String, range: Range<Int>?) throws -> (WebCacheFileInfo, NSFileHandle, Range<Int>)? {
-        guard let info = getMeta(path),
-                  input = NSFileHandle(forReadingAtPath: path) else {
+    init(handle: NSFileHandle, limit: Int) {
+        self.handle = handle
+        self.limit = limit
+    }
+
+    var length: Int {
+        return self.limit
+    }
+    
+    func read(length: Int) -> NSData? {
+        let data = self.handle.readDataOfLength(length)
+        return data.length == 0 ? nil : data
+    }
+    
+    func close() {
+        self.handle.closeFile()
+    }
+}
+
+private class WebCacheFileHandleOutput : WebCacheFileOutput {
+    var handle: NSFileHandle
+
+    init(handle: NSFileHandle) {
+        self.handle = handle
+    }
+
+    func write(data: NSData) {
+        self.handle.writeData(data)
+    }
+    
+    func close() {
+        self.handle.truncateFileAtOffset(self.handle.offsetInFile)
+        self.handle.closeFile()
+    }
+}
+
+public class WebCacheFileStoreDefaultAdapter: WebCacheFileStoreAdapter {
+    var root: String
+    
+    public init(root: String) {
+        do {
+            self.root = root.hasSuffix("/") ? root : root + "/"
+            try self.fileManager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            NSLog("fail to create cache directory, error = %@", error as NSError)
+        }
+    }
+
+    public func getPath(url: String) -> String {
+        return self.root + self.getUrlHash(url)
+    }
+
+    public func openInput(path: String, range: Range<Int>?) -> (WebCacheFileMeta, WebCacheFileInput)? {
+        guard let meta = self.getMeta(path) else {
+            return nil
+        }
+
+        guard let input = NSFileHandle(forReadingAtPath: path) else {
             return nil
         }
         
         let fileSize = input.seekToEndOfFile()
-        var start = 0
-        var end = Int(fileSize)
+        var offset = range?.startIndex ?? 0
+        var limit = Int(fileSize)
         
         if let range = range {
             if UInt64(range.endIndex) > fileSize {
@@ -133,90 +210,123 @@ public class WebCacheFileStore : WebCacheStore {
                 return nil
             }
             
-            start = range.startIndex
-            end = range.endIndex
+            offset = range.startIndex
+            limit = range.count
         } else {
-            if UInt64(info.totalLength) != fileSize {
+            if UInt64(meta.totalLength) != fileSize {
                 input.closeFile()
                 return nil
             }
         }
         
-        input.seekToFileOffset(UInt64(start))
-        return (info, input, start ..< end)
+        input.seekToFileOffset(UInt64(offset))
+        return (meta, WebCacheFileHandleInput(handle: input, limit: limit))
     }
     
-    private func openOutput(path: String, info: WebCacheFileInfo, offset: Int) throws -> NSFileHandle? {
-        if let meta = getMeta(path) {
-            if !meta.isMatched(info) {
+    public func openOutput(path: String, meta: WebCacheFileMeta, offset: Int) -> WebCacheFileOutput? {
+        if let storedMeta = getMeta(path) {
+            if meta != storedMeta {
                 if offset == 0 {
-                    setMeta(path, info: info)
-                    let output = NSFileHandle(forWritingAtPath: path)
-                    output?.truncateFileAtOffset(0)
-                    return output
+                    setMeta(meta, forPath: path)
+                } else {
+                    remove(path)
+                    return nil
                 }
-                
-                try self.manager.removeItemAtPath(path)
-                return nil
             }
         } else {
             if offset == 0 {
-                self.manager.createFileAtPath(path, contents: nil, attributes: nil)
-                setMeta(path, info: info)
-                return NSFileHandle(forWritingAtPath: path)
+                setMeta(meta, forPath: path)
+                if let handle = NSFileHandle(forWritingAtPath: path) {
+                    return WebCacheFileHandleOutput(handle: handle)
+                }
             }
             return nil
         }
         
-        guard let output = NSFileHandle(forWritingAtPath: path) else {
+        guard let handle = NSFileHandle(forWritingAtPath: path) else {
             return nil
         }
         
-        let fileSize = output.seekToEndOfFile()
+        let fileSize = handle.seekToEndOfFile()
         if UInt64(offset) > fileSize {
-            output.closeFile()
+            handle.closeFile()
             return nil
         }
         
-        output.truncateFileAtOffset(UInt64(offset))
-        return output
+        handle.truncateFileAtOffset(UInt64(offset))
+        return WebCacheFileHandleOutput(handle: handle)
     }
 
+    public func removeAll() {
+        do {
+            try self.fileManager.removeItemAtPath(self.root)
+            try self.fileManager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            NSLog("fail to remove cache root, error = %@", error as NSError)
+        }
+    }
+}
+
+//---------------------------------------------------------------------------
+
+public class WebCacheFileStore : WebCacheStore {
+    private var queue: dispatch_queue_t!
+    private var adapter: WebCacheFileStoreAdapter
+    
+    public convenience init(name: String? = nil) {
+        let name = name ?? "WebCache"
+        let url = NSFileManager.defaultManager().URLsForDirectory(.CachesDirectory, inDomains: .UserDomainMask).first!
+        let path = url.URLByAppendingPathComponent(name, isDirectory: true).path!
+        self.init(path: path)
+    }
+    
+    public convenience init(path: String) {
+        let adapter = WebCacheFileStoreDefaultAdapter(root: path)
+        self.init(adapter: adapter)
+    }
+
+    public init(adapter: WebCacheFileStoreAdapter) {
+        self.queue = dispatch_queue_create("WebCacheFileStore", DISPATCH_QUEUE_SERIAL)
+        self.adapter = adapter
+    }
+    
     public func fetch(url: String, range: Range<Int>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         dispatch_async(self.queue) {
             do {
-                let file = self.filePath(url)
-                guard let (info, input, range) = try self.openInput(file, range: range) else {
+                let file = self.adapter.getPath(url)
+                guard let (meta, input) = try self.adapter.openInput(file, range: range) else {
                     receiver.onReceiveError(nil, progress: progress)
                     return;
                 }
                 
                 defer {
-                    input.closeFile()
+                    input.close()
                 }
                 
-                progress?.totalUnitCount = Int64(range.count)
+                let offset = range?.startIndex ?? 0
+                var length = input.length
+                
+                progress?.totalUnitCount = Int64(length)
                 if progress?.cancelled == true {
                     receiver.onReceiveError(nil, progress: progress)
                     return;
                 }
                 
-                let response = NSURLResponse(URL: NSURL(string: url)!, MIMEType: info.mimeType, expectedContentLength: range.count, textEncodingName: info.textEncoding)
-                receiver.onReceiveResponse(response, offset: range.startIndex, totalLength: info.totalLength, progress: progress)
+                let response = NSURLResponse(URL: NSURL(string: url)!, MIMEType: meta.mimeType, expectedContentLength: length, textEncodingName: meta.textEncoding)
+                receiver.onReceiveResponse(response, offset: offset, totalLength: meta.totalLength, progress: progress)
                 
-                while true {
+                while length > 0 {
                     if progress?.cancelled == true {
                         receiver.onReceiveError(nil, progress: progress)
                         return;
                     }
                     
-                    let data = input.readDataOfLength(65536)
-                    if data.length > 0 {
-                        receiver.onReceiveData(data, progress: progress)
-                    } else {
+                    guard let data = try input.read(min(length, 65536)) else {
                         break
                     }
                     
+                    receiver.onReceiveData(data, progress: progress)
+                    length -= data.length
                     progress?.completedUnitCount += Int64(data.length)
                 }
                 
@@ -230,8 +340,8 @@ public class WebCacheFileStore : WebCacheStore {
     public func check(url: String, range: Range<Int>? = nil, completion: (Bool) -> Void) {
         dispatch_async(self.queue) {
             do {
-                let path = self.filePath(url)
-                if self.getMeta(path) == nil {
+                let path = self.adapter.getPath(url)
+                if self.adapter.getMeta(path) == nil {
                     completion(false)
                     return
                 }
@@ -256,33 +366,24 @@ public class WebCacheFileStore : WebCacheStore {
     
     public func change(url: String, expired: WebCacheExpiration) {
         dispatch_async(self.queue) {
-            let path = self.filePath(url)
-            if var meta = self.getMeta(path) {
+            let path = self.adapter.getPath(url)
+            if var meta = self.adapter.getMeta(path) {
                 meta.expiration = expired
-                self.setMeta(path, info: meta)
+                self.adapter.setMeta(meta, forPath: path)
             }
         }
     }
     
     public func remove(url: String) {
         dispatch_async(self.queue) {
-            do {
-                let path = self.filePath(url)
-                try self.manager.removeItemAtPath(path)
-            } catch let error {
-                NSLog("fail to remove %@, error = %@", url, error as NSError)
-            }
+            let path = self.adapter.getPath(url)
+            self.adapter.remove(path)
         }
     }
         
     public func removeAll() {
         dispatch_async(self.queue) {
-            do {
-                try self.manager.removeItemAtPath(self.root)
-                try self.manager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
-            } catch let error {
-                NSLog("fail to remove cache directory, error = %@", error as NSError)
-            }
+            self.adapter.removeAll()
         }
     }
 }
@@ -290,54 +391,60 @@ public class WebCacheFileStore : WebCacheStore {
 //---------------------------------------------------------------------------
 
 private class WebCacheFileReceiver : WebCacheReceiver {
-    private var store: WebCacheFileStore
+    private var adapter: WebCacheFileStoreAdapter
     private var queue: dispatch_queue_t!
     private var expiration: WebCacheExpiration
     private var url: String
-    private var output: NSFileHandle?
+    private var output: WebCacheFileOutput?
     
     init(url: String, expired: WebCacheExpiration, store: WebCacheFileStore) {
         self.url = url
         self.expiration = expired
-        self.store = store
+        self.adapter = store.adapter
         self.queue = store.queue
     }
         
     func onReceiveResponse(response: NSURLResponse, offset: Int, totalLength: Int, progress: NSProgress?) {
         dispatch_async(self.queue) {
             do {
-                let path = self.store.filePath(self.url)
-                let info = WebCacheFileInfo(mimeType: response.MIMEType, textEncoding: response.textEncodingName, totalLength: totalLength, expiration: self.expiration)
-                self.output = try self.store.openOutput(path, info: info, offset: offset)
-            } catch let error {
-                NSLog("fail to receive %@, error = %@", self.url, error as NSError)
+                let path = self.adapter.getPath(self.url)
+                let meta = WebCacheFileMeta(mimeType: response.MIMEType, textEncoding: response.textEncodingName, totalLength: totalLength, expiration: self.expiration)
+                self.output = try self.adapter.openOutput(path, meta: meta, offset: offset)
+            } catch {
+                NSLog("fail to open file for %@, error = %@", self.url, error as NSError)
             }
         }
     }
     
     func onReceiveData(data: NSData, progress: NSProgress?) {
         dispatch_barrier_async(self.queue) {
-            self.output?.writeData(data)
+            do {
+                try self.output?.write(data)
+            } catch {
+                NSLog("fail to write file, error = %@", error as NSError)
+                self.output?.close()
+                self.output = nil
+            }
         }
     }
     
     func onReceiveEnd(progress progress: NSProgress?) {
         dispatch_async(self.queue) {
-            if let output = self.output {
-                output.truncateFileAtOffset(output.offsetInFile)
-                output.closeFile()
-                self.output = nil
-            }
+            self.output?.close()
+            self.output = nil
         }
     }
     
     func onReceiveError(error: NSError?, progress: NSProgress?) {
         dispatch_async(self.queue) {
             if let error = error {
-                NSLog("fail to receive %@, error = %@", self.url, error)
+                NSLog("fail to receive file for %@, error = %@", self.url, error)
             }
+            self.output?.close()
             self.output = nil
-            self.store.remove(self.url)
+            
+            let path = self.adapter.getPath(self.url)
+            self.adapter.remove(path)
         }
     }
 }

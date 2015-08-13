@@ -31,7 +31,7 @@ import Foundation
 private let shift: [UInt32] = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21]
 private let table: [UInt32] = (0 ..< 64).map { UInt32(0x100000000 * abs(sin(Double($0 + 1)))) }
 
-func MD5(text: String) -> String {
+public func WebCacheMD5(text: String) -> String {
     var message = [UInt8](text.utf8)
     let messageLenBits = UInt64(message.count) * 8
     message.append(0x80)
