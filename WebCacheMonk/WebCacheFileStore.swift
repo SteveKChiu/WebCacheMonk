@@ -31,7 +31,7 @@ import Foundation
 public struct WebCacheFileMeta {
     public var mimeType: String?
     public var textEncoding: String?
-    public var totalLength: Int
+    public var totalLength: Int64?
     public var expiration: WebCacheExpiration
 }
 
@@ -48,7 +48,7 @@ public func != (lhs: WebCacheFileMeta, rhs: WebCacheFileMeta) -> Bool {
 //---------------------------------------------------------------------------
 
 public protocol WebCacheFileInput : class {
-    var length: Int { get }
+    var length: Int64 { get }
     func read(length: Int) throws -> NSData?
     func close()
 }
@@ -62,8 +62,8 @@ public protocol WebCacheFileStoreAdapter : class {
     func getPath(url: String) -> String
     func getMeta(path: String) -> WebCacheFileMeta?
     func setMeta(meta: WebCacheFileMeta, forPath: String)
-    func openInput(path: String, range: Range<Int>?) throws -> (WebCacheFileMeta, WebCacheFileInput)?
-    func openOutput(path: String, meta: WebCacheFileMeta, offset: Int) throws -> WebCacheFileOutput?
+    func openInput(path: String, range: Range<Int64>?) throws -> (WebCacheFileMeta, WebCacheFileInput)?
+    func openOutput(path: String, meta: WebCacheFileMeta, offset: Int64) throws -> WebCacheFileOutput?
     func remove(path: String)
     func removeAll()
 }
@@ -90,7 +90,7 @@ public extension WebCacheFileStoreAdapter {
             let meta = WebCacheFileMeta(
                     mimeType: json["m"] as? String,
                     textEncoding: json["t"] as? String,
-                    totalLength: (json["l"] as? NSNumber)?.integerValue ?? 0,
+                    totalLength: (json["l"] as? NSNumber)?.longLongValue,
                     expiration: .Description(json["e"] as? String))
             if meta.expiration.isExpired {
                 try self.fileManager.removeItemAtPath(path)
@@ -110,7 +110,9 @@ public extension WebCacheFileStoreAdapter {
         if let textEncoding = meta.textEncoding {
             json["t"] = textEncoding
         }
-        json["l"] = meta.totalLength
+        if let totalLength = meta.totalLength {
+            json["l"] = NSNumber(longLong: totalLength)
+        }
         json["e"] = meta.expiration.description
         
         do {
@@ -137,14 +139,14 @@ public extension WebCacheFileStoreAdapter {
 
 private class WebCacheFileHandleInput : WebCacheFileInput {
     var handle: NSFileHandle
-    var limit: Int
+    var limit: Int64
     
-    init(handle: NSFileHandle, limit: Int) {
+    init(handle: NSFileHandle, limit: Int64) {
         self.handle = handle
         self.limit = limit
     }
 
-    var length: Int {
+    var length: Int64 {
         return self.limit
     }
     
@@ -191,7 +193,7 @@ public class WebCacheFileStoreDefaultAdapter: WebCacheFileStoreAdapter {
         return self.root + self.getUrlHash(url)
     }
 
-    public func openInput(path: String, range: Range<Int>?) -> (WebCacheFileMeta, WebCacheFileInput)? {
+    public func openInput(path: String, range: Range<Int64>?) -> (WebCacheFileMeta, WebCacheFileInput)? {
         guard let meta = self.getMeta(path) else {
             return nil
         }
@@ -202,7 +204,7 @@ public class WebCacheFileStoreDefaultAdapter: WebCacheFileStoreAdapter {
         
         let fileSize = input.seekToEndOfFile()
         var offset = range?.startIndex ?? 0
-        var limit = Int(fileSize)
+        var limit = Int64(fileSize)
         
         if let range = range {
             if UInt64(range.endIndex) > fileSize {
@@ -211,9 +213,9 @@ public class WebCacheFileStoreDefaultAdapter: WebCacheFileStoreAdapter {
             }
             
             offset = range.startIndex
-            limit = range.count
+            limit = Int64(range.count)
         } else {
-            if UInt64(meta.totalLength) != fileSize {
+            if meta.totalLength != limit {
                 input.closeFile()
                 return nil
             }
@@ -223,7 +225,7 @@ public class WebCacheFileStoreDefaultAdapter: WebCacheFileStoreAdapter {
         return (meta, WebCacheFileHandleInput(handle: input, limit: limit))
     }
     
-    public func openOutput(path: String, meta: WebCacheFileMeta, offset: Int) -> WebCacheFileOutput? {
+    public func openOutput(path: String, meta: WebCacheFileMeta, offset: Int64) -> WebCacheFileOutput? {
         if let storedMeta = getMeta(path) {
             if meta != storedMeta {
                 if offset == 0 {
@@ -290,7 +292,7 @@ public class WebCacheFileStore : WebCacheStore {
         self.adapter = adapter
     }
     
-    public func fetch(url: String, range: Range<Int>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         dispatch_async(self.queue) {
             do {
                 let file = self.adapter.getPath(url)
@@ -312,8 +314,8 @@ public class WebCacheFileStore : WebCacheStore {
                     return;
                 }
                 
-                let response = NSURLResponse(URL: NSURL(string: url)!, MIMEType: meta.mimeType, expectedContentLength: length, textEncodingName: meta.textEncoding)
-                receiver.onReceiveResponse(response, offset: offset, totalLength: meta.totalLength, progress: progress)
+                let response = NSURLResponse(URL: NSURL(string: url)!, MIMEType: meta.mimeType, expectedContentLength: Int(length), textEncodingName: meta.textEncoding)
+                receiver.onReceiveResponse(response, offset: offset, length: length, totalLength: meta.totalLength, progress: progress)
                 
                 while length > 0 {
                     if progress?.cancelled == true {
@@ -321,7 +323,8 @@ public class WebCacheFileStore : WebCacheStore {
                         return;
                     }
                     
-                    guard let data = try input.read(min(length, 65536)) else {
+                    let size = Int(min(length, 65536))
+                    guard let data = try input.read(size) else {
                         break
                     }
                     
@@ -337,7 +340,7 @@ public class WebCacheFileStore : WebCacheStore {
         }
     }
 
-    public func check(url: String, range: Range<Int>? = nil, completion: (Bool) -> Void) {
+    public func check(url: String, range: Range<Int64>? = nil, completion: (Bool) -> Void) {
         dispatch_async(self.queue) {
             do {
                 let path = self.adapter.getPath(url)
@@ -349,7 +352,7 @@ public class WebCacheFileStore : WebCacheStore {
                 let file = NSURL(fileURLWithPath: path)
                 var fileSizeValue: AnyObject?
                 try file.getResourceValue(&fileSizeValue, forKey: NSURLFileSizeKey)
-                let fileSize = (fileSizeValue as! NSNumber).integerValue
+                let fileSize = (fileSizeValue as! NSNumber).longLongValue
                 
                 let start = range?.startIndex ?? 0
                 let end = range?.endIndex ?? fileSize
@@ -404,7 +407,7 @@ private class WebCacheFileReceiver : WebCacheReceiver {
         self.queue = store.queue
     }
         
-    func onReceiveResponse(response: NSURLResponse, offset: Int, totalLength: Int, progress: NSProgress?) {
+    func onReceiveResponse(response: NSURLResponse, offset: Int64, length: Int64?, totalLength: Int64?, progress: NSProgress?) {
         dispatch_async(self.queue) {
             do {
                 let path = self.adapter.getPath(self.url)

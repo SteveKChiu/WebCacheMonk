@@ -37,7 +37,7 @@ public class WebCacheFetcher : WebCacheSource {
         self.session = NSURLSession(configuration: configuration ?? NSURLSessionConfiguration.ephemeralSessionConfiguration(), delegate: self.bridge, delegateQueue: nil)
     }
 
-    public func fetch(url: String, range: Range<Int>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         let request = NSMutableURLRequest(URL: NSURL(string: url)!)
         request.HTTPMethod = "GET"
         request.setValue("gzip, identity", forHTTPHeaderField: "Accept-Encoding")
@@ -115,8 +115,9 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
         info.progress?.totalUnitCount = response.expectedContentLength
 
         let receiver = info.receiver
-        var offset = 0
-        var totalLength = Int(response.expectedContentLength)
+        var offset: Int64 = 0
+        var length: Int64? = response.expectedContentLength == -1 ? nil : response.expectedContentLength
+        var totalLength: Int64? = length
         
         if let http = response as? NSHTTPURLResponse {
             switch http.statusCode {
@@ -131,10 +132,14 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
                     let rex = try! NSRegularExpression(pattern: "bytes\\s+(\\d+)\\-(\\d+)/(\\d+)", options: [])
                     let results = rex.matchesInString(range as String, options: [], range: NSRange(0 ..< Int(range.length)))
                     if results[0].range.location != NSNotFound {
-                        offset = Int(range.substringWithRange(results[0].range))!
+                        offset = Int64(range.substringWithRange(results[0].range))!
                     }
-                    if results[2].range.location != NSNotFound {
-                        totalLength = Int(range.substringWithRange(results[2].range))!
+                    if results[1].range.location != NSNotFound {
+                        let end = Int64(range.substringWithRange(results[1].range))!
+                        length = end - offset + 1
+                    }
+                     if results[2].range.location != NSNotFound {
+                        totalLength = Int64(range.substringWithRange(results[2].range))!
                     }
                 }
                 break
@@ -155,7 +160,7 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
             }
         }
         
-        receiver.onReceiveResponse(response, offset: offset, totalLength: totalLength, progress: info.progress)
+        receiver.onReceiveResponse(response, offset: offset, length: length, totalLength: totalLength, progress: info.progress)
         completionHandler(.Allow)
     }
 

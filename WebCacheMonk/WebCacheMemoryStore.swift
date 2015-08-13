@@ -72,7 +72,7 @@ public class WebCacheMemoryStore : WebCacheStore {
         }
     }
 
-    private func fetch(url: String, range: Range<Int>? = nil) -> (info: WebCacheDataInfo, data: NSData)? {
+    private func fetch(url: String, range: Range<Int64>? = nil) -> (info: WebCacheDataInfo, data: NSData)? {
         guard let info = self.cache.objectForKey(url) as? WebCacheDataInfo else {
             return nil
         }
@@ -84,19 +84,19 @@ public class WebCacheMemoryStore : WebCacheStore {
         
         var data = info.data
         if let range = range {
-            guard range.endIndex <= data.length else {
+            guard range.endIndex <= Int64(data.length) else {
                 return nil
             }
             
             if range.count < data.length {
-                data = data.subdataWithRange(NSRange(range))
+                data = data.subdataWithRange(NSRange(Int(range.startIndex) ..< Int(range.endIndex)))
             }
         }
         
         return (info, data)
     }
 
-    public func fetch(url: String, range: Range<Int>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         guard let (info, data) = fetch(url, range: range) else {
             receiver.onReceiveError(nil, progress: progress)
             return
@@ -104,27 +104,31 @@ public class WebCacheMemoryStore : WebCacheStore {
         
         let response = NSURLResponse(URL: NSURL(string: url)!, MIMEType: info.mimeType, expectedContentLength: data.length, textEncodingName: info.textEncoding)
         
-        progress?.totalUnitCount = Int64(data.length)
-        receiver.onReceiveResponse(response, offset: range?.startIndex ?? 0, totalLength: info.data.length, progress: progress)
+        let offset = range?.startIndex ?? 0
+        let length = Int64(data.length)
+        
+        progress?.totalUnitCount = length
+        receiver.onReceiveResponse(response, offset: offset, length: length, totalLength: Int64(info.data.length), progress: progress)
         
         receiver.onReceiveData(data, progress: progress)
-        progress?.completedUnitCount += Int64(data.length)
+        progress?.completedUnitCount += length
         
         receiver.onReceiveEnd(progress: progress)
     }
 
-    public func fetch(url: String, range: Range<Int>? = nil, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
+    public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
         guard let (_, data) = fetch(url, range: range) else {
             completion(nil)
             return
         }
 
-        progress?.totalUnitCount = Int64(data.length)
+        let length = Int64(data.length)
+        progress?.totalUnitCount = length
         completion(data)
-        progress?.completedUnitCount += Int64(data.length)
+        progress?.completedUnitCount += length
     }
 
-    public func check(url: String, range: Range<Int>? = nil, completion: (Bool) -> Void) {
+    public func check(url: String, range: Range<Int64>? = nil, completion: (Bool) -> Void) {
         guard let info = self.cache.objectForKey(url) as? WebCacheDataInfo else {
             completion(false)
             return
@@ -137,7 +141,7 @@ public class WebCacheMemoryStore : WebCacheStore {
         }
 
         if let range = range {
-            completion(range.endIndex <= info.data.length)
+            completion(range.endIndex <= Int64(info.data.length))
         } else {
             completion(true)
         }

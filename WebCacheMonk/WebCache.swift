@@ -29,11 +29,11 @@ import Foundation
 //---------------------------------------------------------------------------
 
 public protocol WebCacheSource : class {
-    func fetch(url: String, range: Range<Int>?, progress: NSProgress?, receiver: WebCacheReceiver)
+    func fetch(url: String, range: Range<Int64>?, progress: NSProgress?, receiver: WebCacheReceiver)
 }
 
 public extension WebCacheSource {
-    public func fetch(url: String, range: Range<Int>? = nil, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
+    public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
         self.fetch(url, range: range, progress: progress, receiver: WebCacheDataReceiver(url: url) {
             receiver, progress in
             
@@ -45,7 +45,7 @@ public extension WebCacheSource {
 //---------------------------------------------------------------------------
 
 public protocol WebCacheStore : WebCacheSource {
-    func check(url: String, range: Range<Int>?, completion: (Bool) -> Void)
+    func check(url: String, range: Range<Int64>?, completion: (Bool) -> Void)
     func store(url: String, expired: WebCacheExpiration) -> WebCacheReceiver
     func change(url: String, expired: WebCacheExpiration)
     func remove(url: String)
@@ -56,7 +56,8 @@ public extension WebCacheStore {
     public func store(url: String, mimeType: String?, textEncoding: String? = nil, expired: WebCacheExpiration = .Default, data: NSData) {
         let receiver = self.store(url, expired: expired)
         let response = NSURLResponse(URL: NSURL(string: url)!, MIMEType: mimeType, expectedContentLength: data.length, textEncodingName: textEncoding)
-        receiver.onReceiveResponse(response, offset: 0, totalLength: data.length, progress: nil)
+        let length = Int64(data.length)
+        receiver.onReceiveResponse(response, offset: 0, length: length, totalLength: length, progress: nil)
         receiver.onReceiveData(data, progress: nil)
         receiver.onReceiveEnd(progress: nil)
     }
@@ -85,7 +86,7 @@ public class WebCache : WebCacheStore {
         self.dataSource = source
     }
 
-    public func fetch(url: String, range: Range<Int>? = nil, expired: WebCacheExpiration, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, range: Range<Int64>? = nil, expired: WebCacheExpiration, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         self.dataStore.fetch(url, range: range, progress: progress, receiver: WebCacheFilter(receiver) {
             progress in
             
@@ -108,11 +109,11 @@ public class WebCache : WebCacheStore {
         })
     }
 
-    public func fetch(url: String, range: Range<Int>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         fetch(url, range: range, expired: .Default, progress: progress, receiver: receiver)
     }
 
-    public func fetch(url: String, range: Range<Int>? = nil, expired: WebCacheExpiration, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
+    public func fetch(url: String, range: Range<Int64>? = nil, expired: WebCacheExpiration, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
         self.dataStore.fetch(url, range: range, progress: progress) {
             data in
             
@@ -147,7 +148,7 @@ public class WebCache : WebCacheStore {
         }
     }
 
-    public func fetch(url: String, range: Range<Int>? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil) {
+    public func fetch(url: String, range: Range<Int64>? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil) {
         self.check(url, range: range) {
             found in
             
@@ -162,7 +163,7 @@ public class WebCache : WebCacheStore {
         }
     }
 
-    public func check(url: String, range: Range<Int>? = nil, completion: (Bool) -> Void) {
+    public func check(url: String, range: Range<Int64>? = nil, completion: (Bool) -> Void) {
         self.dataStore.check(url, range: range) {
             found in
             
