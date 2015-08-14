@@ -74,6 +74,7 @@ public class WebCacheFileOutputStream : WebCacheOutputStream {
 
 public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     private var root: String
+    private var groups = [String: String]()
     
     public init(root: String) {
         do {
@@ -85,11 +86,35 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     }
 
     public func getPath(url: String) -> String {
-        return self.root + self.getUrlHash(url)
+        for (group_url, group_path) in self.groups {
+            if url.hasPrefix(group_url) {
+                return group_path + getUrlHash(url)
+            }
+        }
+        return self.root + getUrlHash(url)
     }
 
-    public func openInputStream(path: String, range: Range<Int64>?) -> (WebCacheStorageInfo, WebCacheInputStream)? {
-        guard let meta = self.getMeta(path) else {
+    public func addGroup(url: String) {
+        let url = url.hasSuffix("/") ? url : url + "/"
+        let group = self.root + getUrlHash(url) + "/"
+        self.groups[url] = group
+
+        do {
+            try self.fileManager.createDirectoryAtPath(group, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            NSLog("fail to create cache group %@, error = %@", url, error as NSError)
+        }
+    }
+    
+    public func removeGroup(url: String) {
+        let url = url.hasSuffix("/") ? url : url + "/"
+        let group = self.root + getUrlHash(url) + "/"
+        self.groups.removeValueForKey(url)
+        remove(group)
+    }
+
+    public func openInputStream(path: String, range: Range<Int64>?) throws -> (WebCacheStorageInfo, WebCacheInputStream)? {
+        guard let meta = getMeta(path) else {
             return nil
         }
 
@@ -120,7 +145,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         return (meta, WebCacheFileInputStream(handle: input, limit: limit))
     }
     
-    public func openOutputStream(path: String, meta: WebCacheStorageInfo, offset: Int64) -> WebCacheOutputStream? {
+    public func openOutputStream(path: String, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream? {
         if let storedMeta = getMeta(path) {
             if meta != storedMeta {
                 if offset == 0 {
@@ -156,6 +181,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
 
     public func removeAll() {
         do {
+            self.groups.removeAll()
             try self.fileManager.removeItemAtPath(self.root)
             try self.fileManager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
         } catch {

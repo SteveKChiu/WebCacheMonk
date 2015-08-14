@@ -59,10 +59,16 @@ public protocol WebCacheOutputStream : class {
 
 public protocol WebCacheStorageAdapter : class {
     func getPath(url: String) -> String
+    
+    func addGroup(url: String)
+    func removeGroup(url: String)
+    
     func getMeta(path: String) -> WebCacheStorageInfo?
     func setMeta(path: String, meta: WebCacheStorageInfo)
+    
     func openInputStream(path: String, range: Range<Int64>?) throws -> (WebCacheStorageInfo, WebCacheInputStream)?
     func openOutputStream(path: String, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream?
+    
     func remove(path: String)
     func removeAll()
 }
@@ -148,8 +154,12 @@ public class WebCacheStorage : WebCacheStore {
         self.adapter = adapter
     }
     
+    public func perform(block: () -> Void) {
+        dispatch_async(self.queue, block)
+    }
+
     public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
-        dispatch_async(self.queue) {
+        perform() {
             do {
                 let file = self.adapter.getPath(url)
                 guard let (meta, input) = try self.adapter.openInputStream(file, range: range) else {
@@ -196,7 +206,7 @@ public class WebCacheStorage : WebCacheStore {
     }
 
     public func check(url: String, range: Range<Int64>? = nil, completion: (Bool) -> Void) {
-        dispatch_async(self.queue) {
+        perform() {
             do {
                 let path = self.adapter.getPath(url)
                 if self.adapter.getMeta(path) == nil {
@@ -223,7 +233,7 @@ public class WebCacheStorage : WebCacheStore {
     }
     
     public func change(url: String, expired: WebCacheExpiration) {
-        dispatch_async(self.queue) {
+        perform() {
             let path = self.adapter.getPath(url)
             if let meta = self.adapter.getMeta(path) {
                 meta.expiration = expired
@@ -233,15 +243,27 @@ public class WebCacheStorage : WebCacheStore {
     }
     
     public func remove(url: String) {
-        dispatch_async(self.queue) {
+        perform() {
             let path = self.adapter.getPath(url)
             self.adapter.remove(path)
         }
     }
         
     public func removeAll() {
-        dispatch_async(self.queue) {
+        perform() {
             self.adapter.removeAll()
+        }
+    }
+    
+    public func addGroup(url: String) {
+        perform() {
+            self.adapter.addGroup(url)
+        }
+    }
+
+    public func removeGroup(url: String) {
+        perform() {
+            self.adapter.removeGroup(url)
         }
     }
 }
@@ -249,8 +271,7 @@ public class WebCacheStorage : WebCacheStore {
 //---------------------------------------------------------------------------
 
 private class WebCacheStorageReceiver : WebCacheReceiver {
-    private var adapter: WebCacheStorageAdapter
-    private var queue: dispatch_queue_t
+    private var store: WebCacheStorage
     private var semaphore: dispatch_semaphore_t
     private var expiration: WebCacheExpiration
     private var url: String
@@ -259,17 +280,17 @@ private class WebCacheStorageReceiver : WebCacheReceiver {
     init(url: String, expired: WebCacheExpiration, store: WebCacheStorage) {
         self.url = url
         self.expiration = expired
-        self.adapter = store.adapter
-        self.queue = store.queue
+        self.store = store
         self.semaphore = dispatch_semaphore_create(4)
     }
         
     func onReceiveStarted(info: WebCacheInfo, offset: Int64, length: Int64?, progress: NSProgress?) {
-        dispatch_async(self.queue) {
+        self.store.perform() {
             do {
-                let path = self.adapter.getPath(self.url)
+                let adapter = self.store.adapter
+                let path = adapter.getPath(self.url)
                 let meta = WebCacheStorageInfo(from: info, expired: self.expiration)
-                self.output = try self.adapter.openOutputStream(path, meta: meta, offset: offset)
+                self.output = try adapter.openOutputStream(path, meta: meta, offset: offset)
             } catch {
                 NSLog("fail to open file for %@, error = %@", self.url, error as NSError)
             }
@@ -280,7 +301,7 @@ private class WebCacheStorageReceiver : WebCacheReceiver {
         // to avoid the sender dump the data too fast, to reduce memory usage
         dispatch_semaphore_wait(self.semaphore, dispatch_time(DISPATCH_TIME_NOW, Int64(NSEC_PER_SEC)))
         
-        dispatch_async(self.queue) {
+        self.store.perform() {
             do {
                 try self.output?.write(data)
             } catch {
@@ -294,22 +315,23 @@ private class WebCacheStorageReceiver : WebCacheReceiver {
     }
     
     func onReceiveFinished(progress progress: NSProgress?) {
-        dispatch_async(self.queue) {
+        self.store.perform() {
             self.output?.close()
             self.output = nil
         }
     }
     
     func onReceiveAborted(error: NSError?, progress: NSProgress?) {
-        dispatch_async(self.queue) {
+        self.store.perform() {
             if let error = error {
                 NSLog("fail to receive file for %@, error = %@", self.url, error)
             }
             self.output?.close()
             self.output = nil
             
-            let path = self.adapter.getPath(self.url)
-            self.adapter.remove(path)
+            let adapter = self.store.adapter
+            let path = adapter.getPath(self.url)
+            adapter.remove(path)
         }
     }
 }
