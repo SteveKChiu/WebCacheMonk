@@ -53,13 +53,11 @@ public protocol WebCacheStore : WebCacheSource {
 }
 
 public extension WebCacheStore {
-    public func store(url: String, mimeType: String?, textEncoding: String? = nil, expired: WebCacheExpiration = .Default, data: NSData) {
+    public func store(url: String, info: WebCacheInfo, expired: WebCacheExpiration = .Default, data: NSData) {
         let receiver = self.store(url, expired: expired)
-        let response = NSURLResponse(URL: NSURL(string: url)!, MIMEType: mimeType, expectedContentLength: data.length, textEncodingName: textEncoding)
-        let length = Int64(data.length)
-        receiver.onReceiveResponse(response, offset: 0, length: length, totalLength: length, progress: nil)
+        receiver.onReceiveStarted(info, offset: 0, length: Int64(data.length), progress: nil)
         receiver.onReceiveData(data, progress: nil)
-        receiver.onReceiveEnd(progress: nil)
+        receiver.onReceiveFinished(progress: nil)
     }
 }
 
@@ -91,12 +89,12 @@ public class WebCache : WebCacheStore {
             progress in
             
             if progress?.cancelled == true {
-                receiver.onReceiveError(nil, progress: progress)
+                receiver.onReceiveAborted(nil, progress: progress)
                 return
             }
             
             guard let dataSource = self.dataSource else {
-                receiver.onReceiveError(nil, progress: progress)
+                receiver.onReceiveAborted(nil, progress: progress)
                 return
             }
             
@@ -130,12 +128,12 @@ public class WebCache : WebCacheStore {
             let storeReceiver = WebCacheDataReceiver(url: url) {
                 receiver, progress in
                 
-                guard let response = receiver.response, data = receiver.buffer else {
+                guard let info = receiver.info, data = receiver.buffer else {
                     completion(nil)
                     return
                 }
                 
-                self.dataStore.store(url, mimeType: response.MIMEType, textEncoding: response.textEncodingName, expired: expired, data: data)
+                self.dataStore.store(url, info: info, expired: expired, data: data)
                 
                 completion(data)
             }
@@ -181,8 +179,8 @@ public class WebCache : WebCacheStore {
         return self.dataStore.store(url, expired: expired)
     }
 
-    public func store(url: String, mimeType: String?, textEncoding: String? = nil, expired: WebCacheExpiration = .Default, data: NSData) {
-        self.dataStore.store(url, mimeType: mimeType, textEncoding: textEncoding, expired: expired, data: data)
+    public func store(url: String, info: WebCacheInfo, expired: WebCacheExpiration = .Default, data: NSData) {
+        self.dataStore.store(url, info: info, expired: expired, data: data)
     }
 
     public func change(url: String, expired: WebCacheExpiration) {

@@ -29,15 +29,11 @@ import Foundation
 //---------------------------------------------------------------------------
 
 private class WebCacheDataInfo : NSObject {
-    var mimeType: String?
-    var textEncoding: String?
-    var expiration: WebCacheExpiration
+    var meta: WebCacheStorageInfo
     var data: NSData
     
-    init(mimeType: String?, textEncoding: String?, expired: WebCacheExpiration, data: NSData) {
-        self.mimeType = mimeType
-        self.textEncoding = textEncoding
-        self.expiration = expired
+    init(from: WebCacheInfo, expired: WebCacheExpiration, data: NSData) {
+        self.meta = WebCacheStorageInfo(from: from, expired: expired)
         self.data = data
     }
 }
@@ -77,7 +73,7 @@ public class WebCacheMemoryStore : WebCacheStore {
             return nil
         }
         
-        guard !info.expiration.isExpired else {
+        guard !info.meta.expiration.isExpired else {
             self.cache.removeObjectForKey(url)
             return nil
         }
@@ -98,22 +94,20 @@ public class WebCacheMemoryStore : WebCacheStore {
 
     public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         guard let (info, data) = fetch(url, range: range) else {
-            receiver.onReceiveError(nil, progress: progress)
+            receiver.onReceiveAborted(nil, progress: progress)
             return
         }
-        
-        let response = NSURLResponse(URL: NSURL(string: url)!, MIMEType: info.mimeType, expectedContentLength: data.length, textEncodingName: info.textEncoding)
         
         let offset = range?.startIndex ?? 0
         let length = Int64(data.length)
         
         progress?.totalUnitCount = length
-        receiver.onReceiveResponse(response, offset: offset, length: length, totalLength: Int64(info.data.length), progress: progress)
+        receiver.onReceiveStarted(info.meta, offset: offset, length: length, progress: progress)
         
         receiver.onReceiveData(data, progress: progress)
         progress?.completedUnitCount += length
         
-        receiver.onReceiveEnd(progress: progress)
+        receiver.onReceiveFinished(progress: progress)
     }
 
     public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
@@ -134,7 +128,7 @@ public class WebCacheMemoryStore : WebCacheStore {
             return
         }
         
-        if info.expiration.isExpired {
+        if info.meta.expiration.isExpired {
             self.cache.removeObjectForKey(url)
             completion(false)
             return
@@ -151,23 +145,22 @@ public class WebCacheMemoryStore : WebCacheStore {
         return WebCacheDataReceiver(url: url, acceptPartial: false, sizeLimit: self.cache.totalCostLimit / 4) {
             receiver, progress in
             
-            guard let buffer = receiver.buffer where progress?.cancelled != true else {
+            guard let buffer = receiver.buffer, info = receiver.info
+                    where progress?.cancelled != true else {
                 return
             }
             
-            let mimeType = receiver.response?.MIMEType
-            let textEncoding = receiver.response?.textEncodingName
-            self.store(url, mimeType: mimeType, textEncoding: textEncoding, expired: expired, data: NSData(data: buffer))
+            self.store(url, info: info, expired: expired, data: NSData(data: buffer))
         }
     }
     
-    public func store(url: String, mimeType: String?, textEncoding: String? = nil, expired: WebCacheExpiration = .Default, data: NSData) {
+    public func store(url: String, info: WebCacheInfo, expired: WebCacheExpiration = .Default, data: NSData) {
         if expired.isExpired {
             self.cache.removeObjectForKey(url)
             return
         }
         
-        let info = WebCacheDataInfo(mimeType: mimeType, textEncoding: textEncoding, expired: expired, data: data)
+        let info = WebCacheDataInfo(from: info, expired: expired, data: data)
         self.cache.setObject(info, forKey: url, cost: data.length)
     }
     
@@ -175,7 +168,7 @@ public class WebCacheMemoryStore : WebCacheStore {
         if expired.isExpired {
             self.cache.removeObjectForKey(url)
         } else if let info = self.cache.objectForKey(url) as? WebCacheDataInfo {
-            info.expiration = expired
+            info.meta.expiration = expired
         }
     }
     

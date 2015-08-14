@@ -13,6 +13,7 @@
 		AA1C6DEF1B707FC7001865A8 /* WebCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1C6DEE1B707FC7001865A8 /* WebCache.swift */; };
 		AA1C6DF11B707FDF001865A8 /* WebCacheMemoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1C6DF01B707FDF001865A8 /* WebCacheMemoryStore.swift */; };
 		AA1C6DF31B707FF0001865A8 /* WebCacheFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1C6DF21B707FF0001865A8 /* WebCacheFileStore.swift */; };
+		AA1E72971B7DBC6500982144 /* WebCacheStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1E72961B7DBC6500982144 /* WebCacheStorage.swift */; };
 		AA7D02751B77B612001901B1 /* WebCacheFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7D02741B77B612001901B1 /* WebCacheFetcher.swift */; };
 		AA8CF1B51B789C73000EDB63 /* WebCacheMD5.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA8CF1B41B789C73000EDB63 /* WebCacheMD5.swift */; };
 		AAE875651B7981A40040EB37 /* WebCacheExpiration.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAE875641B7981A40040EB37 /* WebCacheExpiration.swift */; };
@@ -41,6 +42,7 @@
 		AA1C6DEE1B707FC7001865A8 /* WebCache.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebCache.swift; sourceTree = "<group>"; };
 		AA1C6DF01B707FDF001865A8 /* WebCacheMemoryStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebCacheMemoryStore.swift; sourceTree = "<group>"; };
 		AA1C6DF21B707FF0001865A8 /* WebCacheFileStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebCacheFileStore.swift; sourceTree = "<group>"; };
+		AA1E72961B7DBC6500982144 /* WebCacheStorage.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebCacheStorage.swift; sourceTree = "<group>"; };
 		AA7D02741B77B612001901B1 /* WebCacheFetcher.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebCacheFetcher.swift; sourceTree = "<group>"; };
 		AA8CF1B41B789C73000EDB63 /* WebCacheMD5.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebCacheMD5.swift; sourceTree = "<group>"; };
 		AAE875641B7981A40040EB37 /* WebCacheExpiration.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebCacheExpiration.swift; sourceTree = "<group>"; };
@@ -89,16 +91,17 @@
 		AA1C6DD61B7061D9001865A8 /* WebCacheMonk */ = {
 			isa = PBXGroup;
 			children = (
-				AA1C6DD71B7061D9001865A8 /* WebCacheMonk.h */,
 				AA1C6DD91B7061DA001865A8 /* Info.plist */,
+				AA1C6DD71B7061D9001865A8 /* WebCacheMonk.h */,
 				AA1C6DEE1B707FC7001865A8 /* WebCache.swift */,
+				AA1E72961B7DBC6500982144 /* WebCacheStorage.swift */,
 				AA1C6DF01B707FDF001865A8 /* WebCacheMemoryStore.swift */,
-				AAE875661B79B4540040EB37 /* WebObjectCache.swift */,
 				AA1C6DF21B707FF0001865A8 /* WebCacheFileStore.swift */,
 				AA7D02741B77B612001901B1 /* WebCacheFetcher.swift */,
 				AAE9EEEA1B7771DA006AE33F /* WebCacheReceiver.swift */,
 				AA8CF1B41B789C73000EDB63 /* WebCacheMD5.swift */,
 				AAE875641B7981A40040EB37 /* WebCacheExpiration.swift */,
+				AAE875661B79B4540040EB37 /* WebObjectCache.swift */,
 				AAE875681B79C2470040EB37 /* WebImageCache.swift */,
 			);
 			path = WebCacheMonk;
@@ -224,6 +227,7 @@
 				AA1C6DF11B707FDF001865A8 /* WebCacheMemoryStore.swift in Sources */,
 				AA1C6DEF1B707FC7001865A8 /* WebCache.swift in Sources */,
 				AAE875671B79B4540040EB37 /* WebObjectCache.swift in Sources */,
+				AA1E72971B7DBC6500982144 /* WebCacheStorage.swift in Sources */,
 				AA1C6DF31B707FF0001865A8 /* WebCacheFileStore.swift in Sources */,
 				AAE9EEEB1B7771DA006AE33F /* WebCacheReceiver.swift in Sources */,
 				AAE875691B79C2470040EB37 /* WebImageCache.swift in Sources */,

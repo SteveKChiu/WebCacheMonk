@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
 
   s.name         = "WebCacheMonk"
-  s.version      = "0.9"
+  s.version      = "0.9.2"
 
   s.summary      = "A generic and extensible web cache library for Swift"
   s.description  = <<-DESC
