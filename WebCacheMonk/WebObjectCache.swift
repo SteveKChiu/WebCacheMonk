@@ -85,7 +85,7 @@ public class WebObjectCache<OBJECT> {
         }
     
         let receiver = WebCacheDataReceiver(url: url) {
-            receiver, progress in
+            receiver in
             
             guard let data = receiver.buffer else {
                 completion(nil)
@@ -104,9 +104,9 @@ public class WebObjectCache<OBJECT> {
         }
         
         if let cacheStore = self.dataSource as? WebCache {
-            cacheStore.fetch(url, expired: expired,  progress: progress, receiver: receiver)
+            cacheStore.fetch(url, expired: expired, progress: progress, receiver: receiver)
         } else {
-            self.dataSource.fetch(url, range: nil, progress: progress, receiver: receiver)
+            self.dataSource.fetch(url, progress: progress, receiver: receiver)
         }
     }
     

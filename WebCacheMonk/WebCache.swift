@@ -29,13 +29,17 @@ import Foundation
 //---------------------------------------------------------------------------
 
 public protocol WebCacheSource : class {
-    func fetch(url: String, range: Range<Int64>?, progress: NSProgress?, receiver: WebCacheReceiver)
+    func fetch(url: String, offset: Int64?, length: Int64?, progress: NSProgress?, receiver: WebCacheReceiver)
 }
 
 public extension WebCacheSource {
-    public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
-        self.fetch(url, range: range, progress: progress, receiver: WebCacheDataReceiver(url: url) {
-            receiver, progress in
+    public func fetch(url: String, offset: Int64? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+        self.fetch(url, offset: offset, length: nil, progress: progress, receiver: receiver)
+    }
+
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
+        self.fetch(url, offset: offset, length: length, progress: progress, receiver: WebCacheDataReceiver(url: url) {
+            receiver in
             
             completion(receiver.buffer)
         })
@@ -45,7 +49,7 @@ public extension WebCacheSource {
 //---------------------------------------------------------------------------
 
 public protocol WebCacheStore : WebCacheSource {
-    func check(url: String, range: Range<Int64>?, completion: (Bool) -> Void)
+    func check(url: String, offset: Int64?, length: Int64?, completion: (Bool) -> Void)
     func store(url: String, expired: WebCacheExpiration) -> WebCacheReceiver
     func change(url: String, expired: WebCacheExpiration)
     func remove(url: String)
@@ -53,11 +57,16 @@ public protocol WebCacheStore : WebCacheSource {
 }
 
 public extension WebCacheStore {
+    public func check(url: String, offset: Int64? = nil, completion: (Bool) -> Void) {
+        self.check(url, offset: offset, length: nil, completion: completion)
+    }
+
     public func store(url: String, info: WebCacheInfo, expired: WebCacheExpiration = .Default, data: NSData) {
         let receiver = self.store(url, expired: expired)
-        receiver.onReceiveStarted(info, offset: 0, length: Int64(data.length), progress: nil)
-        receiver.onReceiveData(data, progress: nil)
-        receiver.onReceiveFinished(progress: nil)
+        receiver.onReceiveInited(response: nil, progress: nil)
+        receiver.onReceiveStarted(info, offset: 0, length: Int64(data.length))
+        receiver.onReceiveData(data)
+        receiver.onReceiveFinished()
     }
 }
 
@@ -84,35 +93,37 @@ public class WebCache : WebCacheStore {
         self.dataSource = source
     }
 
-    public func fetch(url: String, range: Range<Int64>? = nil, expired: WebCacheExpiration, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
-        self.dataStore.fetch(url, range: range, progress: progress, receiver: WebCacheFilter(receiver) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+        self.dataStore.fetch(url, offset: offset, length: length, progress: progress, receiver: WebCacheFilter(receiver) {
             progress in
             
+            receiver.onReceiveInited(response: nil, progress: progress)
+            
             if progress?.cancelled == true {
-                receiver.onReceiveAborted(nil, progress: progress)
+                receiver.onReceiveAborted(nil)
                 return
             }
             
             guard let dataSource = self.dataSource else {
-                receiver.onReceiveAborted(nil, progress: progress)
+                receiver.onReceiveAborted(nil)
                 return
             }
             
             let storeReceiver = WebCacheFilter(receiver, filter: self.dataStore.store(url, expired: expired))
             if let cacheSource = dataSource as? WebCache {
-                cacheSource.fetch(url, range: range, expired: expired, progress: progress, receiver: storeReceiver)
+                cacheSource.fetch(url, offset: offset, length: length, expired: expired, progress: progress, receiver: storeReceiver)
             } else {
-                dataSource.fetch(url, range: range, progress: progress, receiver: storeReceiver)
+                dataSource.fetch(url, offset: offset, length: length, progress: progress, receiver: storeReceiver)
             }
         })
     }
 
-    public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
-        fetch(url, range: range, expired: .Default, progress: progress, receiver: receiver)
+    public func fetch(url: String, offset: Int64?, length: Int64?, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+        fetch(url, offset: offset, length: length, expired: .Default, progress: progress, receiver: receiver)
     }
 
-    public func fetch(url: String, range: Range<Int64>? = nil, expired: WebCacheExpiration, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
-        self.dataStore.fetch(url, range: range, progress: progress) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
+        self.dataStore.fetch(url, offset: offset, length: length, progress: progress) {
             data in
             
             if progress?.cancelled == true {
@@ -126,7 +137,7 @@ public class WebCache : WebCacheStore {
             }
                         
             let storeReceiver = WebCacheDataReceiver(url: url) {
-                receiver, progress in
+                receiver in
                 
                 guard let info = receiver.info, data = receiver.buffer else {
                     completion(nil)
@@ -139,36 +150,36 @@ public class WebCache : WebCacheStore {
             }
             
             if let cacheSource = dataSource as? WebCache {
-                cacheSource.fetch(url, range: range, expired: expired, progress: progress, receiver: storeReceiver)
+                cacheSource.fetch(url, offset: offset, length: length, expired: expired, progress: progress, receiver: storeReceiver)
             } else {
-                dataSource.fetch(url, range: range, progress: progress, receiver: storeReceiver)
+                dataSource.fetch(url, offset: offset, length: length, progress: progress, receiver: storeReceiver)
             }
         }
     }
 
-    public func fetch(url: String, range: Range<Int64>? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil) {
-        self.check(url, range: range) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil) {
+        self.check(url, offset: offset, length: length) {
             found in
             
             if let dataSource = self.dataSource where !found {
                 let storeReceiver = self.dataStore.store(url, expired: expired)
                 if let cacheSource = dataSource as? WebCache {
-                    cacheSource.fetch(url, range: range, expired: expired, progress: progress, receiver: storeReceiver)
+                    cacheSource.fetch(url, offset: offset, length: length, expired: expired, progress: progress, receiver: storeReceiver)
                 } else {
-                    dataSource.fetch(url, range: range, progress: progress, receiver: storeReceiver)
+                    dataSource.fetch(url, offset: offset, length: length, progress: progress, receiver: storeReceiver)
                 }
             }
         }
     }
 
-    public func check(url: String, range: Range<Int64>? = nil, completion: (Bool) -> Void) {
-        self.dataStore.check(url, range: range) {
+    public func check(url: String, offset: Int64?, length: Int64?, completion: (Bool) -> Void) {
+        self.dataStore.check(url, offset: offset, length: length) {
             found in
             
             if found {
                 completion(true)
             } else if let sourceStore = self.dataSource as? WebCacheStore {
-                sourceStore.check(url, range: range, completion: completion)
+                sourceStore.check(url, offset: offset, length: length, completion: completion)
             } else {
                 completion(false)
             }

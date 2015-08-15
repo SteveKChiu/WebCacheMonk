@@ -37,15 +37,23 @@ public class WebCacheFetcher : WebCacheSource {
         self.session = NSURLSession(configuration: configuration ?? NSURLSessionConfiguration.ephemeralSessionConfiguration(), delegate: self.bridge, delegateQueue: nil)
     }
 
-    public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, offset: Int64?, length: Int64?, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         let request = NSMutableURLRequest(URL: NSURL(string: url)!)
         request.HTTPMethod = "GET"
         request.setValue("gzip, identity", forHTTPHeaderField: "Accept-Encoding")
         
-        if let range = range {
-            request.setValue(String(format: "bytes=%d-%d", range.startIndex, range.endIndex - 1), forHTTPHeaderField: "Range")
+        if let offset = offset {
+            if let length = length {
+                request.setValue(String(format: "bytes=%d-%d", offset, offset + length - 1), forHTTPHeaderField: "Range")
+            } else {
+                request.setValue(String(format: "bytes=%d-", offset), forHTTPHeaderField: "Range")
+            }
+        } else if let length = length {
+            request.setValue(String(format: "bytes=0-", length - 1), forHTTPHeaderField: "Range")
         }
         
+        NSURLProtocol.setProperty("WebCacheFetcher", forKey: "WebCache", inRequest: request)
+
         let task = self.session.dataTaskWithRequest(request)
         let info = WebCacheFetcherInfo(receiver: receiver, progress: progress)
         
@@ -96,7 +104,7 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
 
     func abortTask(task: NSURLSessionTask, error: NSError?) {
         if let info = task.fetcherInfo {
-            info.receiver.onReceiveAborted(error, progress: info.progress)
+            info.receiver.onReceiveAborted(error)
             task.fetcherInfo = nil
         }
     }
@@ -107,6 +115,9 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
             return
         }
         
+        let receiver = fetcher.receiver
+        receiver.onReceiveInited(response: response, progress: fetcher.progress)
+        
         if fetcher.progress?.cancelled == true {
             completionHandler(.Cancel)
             abortTask(dataTask, error: nil)
@@ -114,7 +125,6 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
         }
         fetcher.progress?.totalUnitCount = response.expectedContentLength
 
-        let receiver = fetcher.receiver
         var offset: Int64 = 0
         var length: Int64? = response.expectedContentLength == -1 ? nil : response.expectedContentLength
         let info = WebCacheInfo(mimeType: response.MIMEType)
@@ -123,16 +133,13 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
         
         if let http = response as? NSHTTPURLResponse {
             switch http.statusCode {
-            case 200:
+            case 200, 204:
                 break
-                
-            case 204:
-                break
-            
+                            
             case 206:
                 if let range = http.allHeaderFields["Range"] as? NSString {
                     let rex = try! NSRegularExpression(pattern: "bytes\\s+(\\d+)\\-(\\d+)/(\\d+)", options: [])
-                    let results = rex.matchesInString(range as String, options: [], range: NSRange(0 ..< Int(range.length)))
+                    let results = rex.matchesInString(range as String, options: [], range: NSRange(0 ..< range.length))
                     if results[0].range.location != NSNotFound {
                         offset = Int64(range.substringWithRange(results[0].range))!
                     }
@@ -140,7 +147,7 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
                         let end = Int64(range.substringWithRange(results[1].range))!
                         length = end - offset + 1
                     }
-                     if results[2].range.location != NSNotFound {
+                    if results[2].range.location != NSNotFound {
                         info.totalLength = Int64(range.substringWithRange(results[2].range))!
                     }
                 }
@@ -152,7 +159,7 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
                 return
             
             default:
-                let error = NSError(domain: "WebCache", code: http.statusCode, userInfo: [
+                let error = NSError(domain: "WebCacheFetcher", code: http.statusCode, userInfo: [
                     NSURLErrorKey: response.URL!,
                     NSLocalizedDescriptionKey: NSHTTPURLResponse.localizedStringForStatusCode(http.statusCode)
                 ])
@@ -172,7 +179,7 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
             }
         }
         
-        receiver.onReceiveStarted(info, offset: offset, length: length, progress: fetcher.progress)
+        receiver.onReceiveStarted(info, offset: offset, length: length)
         completionHandler(.Allow)
     }
 
@@ -181,7 +188,7 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
             if info.progress?.cancelled == true {
                 abortTask(dataTask, error: nil)
             } else {
-                info.receiver.onReceiveData(data, progress: info.progress)
+                info.receiver.onReceiveData(data)
                 info.progress?.completedUnitCount += Int64(data.length)
             }
         }
@@ -190,9 +197,9 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
     @objc func URLSession(session: NSURLSession, task: NSURLSessionTask, didCompleteWithError error: NSError?) {
         if let info = task.fetcherInfo {
             if let error = error {
-                info.receiver.onReceiveAborted(error, progress: info.progress)
+                info.receiver.onReceiveAborted(error)
             } else {
-                info.receiver.onReceiveFinished(progress: info.progress)
+                info.receiver.onReceiveFinished()
             }
             task.fetcherInfo = nil
         }

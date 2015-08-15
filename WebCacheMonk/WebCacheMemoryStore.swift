@@ -68,7 +68,7 @@ public class WebCacheMemoryStore : WebCacheStore {
         }
     }
 
-    private func fetch(url: String, range: Range<Int64>? = nil) -> (info: WebCacheDataInfo, data: NSData)? {
+    private func fetch(url: String, offset: Int64?, length: Int64?) -> (info: WebCacheDataInfo, data: NSData)? {
         guard let info = self.cache.objectForKey(url) as? WebCacheDataInfo else {
             return nil
         }
@@ -78,40 +78,45 @@ public class WebCacheMemoryStore : WebCacheStore {
             return nil
         }
         
-        var data = info.data
-        if let range = range {
-            guard range.endIndex <= Int64(data.length) else {
-                return nil
-            }
-            
-            if range.count < data.length {
-                data = data.subdataWithRange(NSRange(Int(range.startIndex) ..< Int(range.endIndex)))
-            }
+        let offset = offset ?? 0
+        let length = length ?? (Int64(info.data.length) - offset)
+        
+        guard offset + length <= Int64(info.data.length) else {
+            return nil
+        }
+        
+        let data: NSData
+        if length < Int64(info.data.length) {
+            data = info.data.subdataWithRange(NSRange(Int(offset) ..< Int(offset + length)))
+        } else {
+            data = info.data
         }
         
         return (info, data)
     }
 
-    public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
-        guard let (info, data) = fetch(url, range: range) else {
-            receiver.onReceiveAborted(nil, progress: progress)
+    public func fetch(url: String, offset: Int64?, length: Int64?, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+        receiver.onReceiveInited(response: nil, progress: progress)
+        
+        guard let (info, data) = fetch(url, offset: offset, length: length) else {
+            receiver.onReceiveAborted(nil)
             return
         }
         
-        let offset = range?.startIndex ?? 0
+        let offset = offset ?? 0
         let length = Int64(data.length)
         
         progress?.totalUnitCount = length
-        receiver.onReceiveStarted(info.meta, offset: offset, length: length, progress: progress)
+        receiver.onReceiveStarted(info.meta, offset: offset, length: length)
         
-        receiver.onReceiveData(data, progress: progress)
+        receiver.onReceiveData(data)
         progress?.completedUnitCount += length
         
-        receiver.onReceiveFinished(progress: progress)
+        receiver.onReceiveFinished()
     }
 
-    public func fetch(url: String, range: Range<Int64>? = nil, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
-        guard let (_, data) = fetch(url, range: range) else {
+    public func fetch(url: String, offset: Int64?, length: Int64?, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
+        guard let (_, data) = fetch(url, offset: offset, length: length) else {
             completion(nil)
             return
         }
@@ -122,7 +127,7 @@ public class WebCacheMemoryStore : WebCacheStore {
         progress?.completedUnitCount += length
     }
 
-    public func check(url: String, range: Range<Int64>? = nil, completion: (Bool) -> Void) {
+    public func check(url: String, offset: Int64?, length: Int64?, completion: (Bool) -> Void) {
         guard let info = self.cache.objectForKey(url) as? WebCacheDataInfo else {
             completion(false)
             return
@@ -134,19 +139,17 @@ public class WebCacheMemoryStore : WebCacheStore {
             return
         }
 
-        if let range = range {
-            completion(range.endIndex <= Int64(info.data.length))
-        } else {
-            completion(true)
-        }
+        let offset = offset ?? 0
+        let length = length ?? (Int64(info.data.length) - offset)
+        completion(offset + length <= Int64(info.data.length))
     }
     
     public func store(url: String, expired: WebCacheExpiration = .Default) -> WebCacheReceiver {
         return WebCacheDataReceiver(url: url, acceptPartial: false, sizeLimit: self.cache.totalCostLimit / 4) {
-            receiver, progress in
+            receiver in
             
             guard let buffer = receiver.buffer, info = receiver.info
-                    where progress?.cancelled != true else {
+                    where receiver.progress?.cancelled != true else {
                 return
             }
             

@@ -62,10 +62,13 @@ public func != (lhs: WebCacheInfo, rhs: WebCacheInfo) -> Bool {
 //---------------------------------------------------------------------------
 
 public protocol WebCacheReceiver : class {
-    func onReceiveStarted(info: WebCacheInfo, offset: Int64, length: Int64?, progress: NSProgress?)
-    func onReceiveData(data: NSData, progress: NSProgress?)
-    func onReceiveFinished(progress progress: NSProgress?)
-    func onReceiveAborted(error: NSError?, progress: NSProgress?)
+    func onReceiveInited(response response: NSURLResponse?, progress: NSProgress?)
+    
+    func onReceiveStarted(info: WebCacheInfo, offset: Int64, length: Int64?)
+    func onReceiveData(data: NSData)
+    func onReceiveFinished()
+    
+    func onReceiveAborted(error: NSError?)
 }
 
 //---------------------------------------------------------------------------
@@ -73,6 +76,7 @@ public protocol WebCacheReceiver : class {
 public class WebCacheFilter : WebCacheReceiver {
     private let receiver: WebCacheReceiver
     private var filter: WebCacheReceiver?
+    private var progress: NSProgress?
     private var onMissingHandler: ((NSProgress?) -> Void)?
     
     public init(_ receiver: WebCacheReceiver, onMissing: (NSProgress?) -> Void) {
@@ -85,27 +89,33 @@ public class WebCacheFilter : WebCacheReceiver {
         self.filter = filter
     }
     
-    public func onReceiveStarted(info: WebCacheInfo, offset: Int64, length: Int64?, progress: NSProgress?) {
-        self.filter?.onReceiveStarted(info, offset: offset, length: length, progress: progress)
-        self.receiver.onReceiveStarted(info, offset: offset, length: length, progress: progress)
+    public func onReceiveInited(response response: NSURLResponse?, progress: NSProgress?) {
+        self.progress = progress
+        self.filter?.onReceiveInited(response: response, progress: progress)
+        self.receiver.onReceiveInited(response: response, progress: progress)
+    }
+
+    public func onReceiveStarted(info: WebCacheInfo, offset: Int64, length: Int64?) {
+        self.filter?.onReceiveStarted(info, offset: offset, length: length)
+        self.receiver.onReceiveStarted(info, offset: offset, length: length)
     }
     
-    public func onReceiveData(data: NSData, progress: NSProgress?) {
-        self.filter?.onReceiveData(data, progress: progress)
-        self.receiver.onReceiveData(data, progress: progress)
+    public func onReceiveData(data: NSData) {
+        self.filter?.onReceiveData(data)
+        self.receiver.onReceiveData(data)
     }
     
-    public func onReceiveFinished(progress progress: NSProgress?) {
-        self.filter?.onReceiveFinished(progress: progress)
-        self.receiver.onReceiveFinished(progress: progress)
+    public func onReceiveFinished() {
+        self.filter?.onReceiveFinished()
+        self.receiver.onReceiveFinished()
     }
     
-    public func onReceiveAborted(error: NSError?, progress: NSProgress?) {
+    public func onReceiveAborted(error: NSError?) {
         if let onMissingHandler = self.onMissingHandler where error == nil {
-            onMissingHandler(progress)
+            onMissingHandler(self.progress)
         } else {
-            self.filter?.onReceiveAborted(error, progress: progress)
-            self.receiver.onReceiveAborted(error, progress: progress)
+            self.filter?.onReceiveAborted(error)
+            self.receiver.onReceiveAborted(error)
         }
     }
 }
@@ -113,7 +123,7 @@ public class WebCacheFilter : WebCacheReceiver {
 //---------------------------------------------------------------------------
 
 public class WebCacheDataReceiver : WebCacheReceiver {
-    private var completion: ((WebCacheDataReceiver, NSProgress?) -> Void)?
+    private var completion: ((WebCacheDataReceiver) -> Void)?
     private var acceptPartial: Bool
     private var sizeLimit: Int64
     
@@ -123,15 +133,22 @@ public class WebCacheDataReceiver : WebCacheReceiver {
     public var length: Int64?
     public var buffer: NSMutableData?
     public var error: NSError?
+    public var response: NSURLResponse?
+    public var progress: NSProgress?
     
-    public init(url: String, acceptPartial: Bool = true, sizeLimit: Int = 0, completion: (WebCacheDataReceiver, NSProgress?) -> Void) {
+    public init(url: String, acceptPartial: Bool = true, sizeLimit: Int? = nil, completion: ((WebCacheDataReceiver) -> Void)? = nil) {
         self.url = url
         self.completion = completion
         self.acceptPartial = acceptPartial
-        self.sizeLimit = Int64(sizeLimit <= 0 ? Int.max : sizeLimit)
+        self.sizeLimit = Int64(sizeLimit ?? Int.max)
     }
-        
-    public func onReceiveStarted(info: WebCacheInfo, offset: Int64, length: Int64?, progress: NSProgress?) {
+    
+    public func onReceiveInited(response response: NSURLResponse?, progress: NSProgress?) {
+        self.response = response
+        self.progress = progress
+    }
+
+    public func onReceiveStarted(info: WebCacheInfo, offset: Int64, length: Int64?) {
         self.info = info
         self.offset = offset
         self.length = length
@@ -147,16 +164,16 @@ public class WebCacheDataReceiver : WebCacheReceiver {
             self.buffer = NSMutableData()
         } else {
             self.buffer = nil
-            self.completion?(self, progress)
+            self.completion?(self)
             self.completion = nil
         }
     }
     
-    public func onReceiveData(data: NSData, progress: NSProgress?) {
+    public func onReceiveData(data: NSData) {
         if let buffer = self.buffer {
             if Int64(buffer.length) + Int64(data.length) > self.sizeLimit {
                 self.buffer = nil
-                self.completion?(self, progress)
+                self.completion?(self)
                 self.completion = nil
             } else {
                 buffer.appendData(data)
@@ -164,15 +181,15 @@ public class WebCacheDataReceiver : WebCacheReceiver {
         }
     }
     
-    public func onReceiveFinished(progress progress: NSProgress?) {
-        self.completion?(self, progress)
+    public func onReceiveFinished() {
+        self.completion?(self)
         self.completion = nil
         self.buffer = nil
     }
     
-    public func onReceiveAborted(error: NSError?, progress: NSProgress?) {
+    public func onReceiveAborted(error: NSError?) {
         self.error = error
-        self.completion?(self, progress)
+        self.completion?(self)
         self.completion = nil
         self.buffer = nil
     }

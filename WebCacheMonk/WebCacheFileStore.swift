@@ -74,7 +74,8 @@ public class WebCacheFileOutputStream : WebCacheOutputStream {
 
 public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     private var root: String
-    private var groups = [String: String]()
+    private var groupMapping = [String: (String, WebCacheExpiration)]()
+    private var groupOrder = [String]()
     
     public init(root: String) {
         do {
@@ -85,19 +86,26 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         }
     }
 
-    public func getPath(url: String) -> String {
-        for (group_url, group_path) in self.groups {
+    public func getPath(url: String) -> (path: String, defaultExpiration: WebCacheExpiration) {
+        for group_url in self.groupOrder {
             if url.hasPrefix(group_url) {
-                return group_path + getUrlHash(url)
+                if let (root, expired) = self.groupMapping[group_url] {
+                    return (root + getUrlHash(url), expired)
+                }
             }
         }
-        return self.root + getUrlHash(url)
+        return (self.root + getUrlHash(url), .Default)
     }
 
-    public func addGroup(url: String) {
+    public func addGroup(url: String, expired: WebCacheExpiration) {
         let url = url.hasSuffix("/") ? url : url + "/"
+        if self.groupMapping[url] != nil {
+            return
+        }
         let group = self.root + getUrlHash(url) + "/"
-        self.groups[url] = group
+        
+        self.groupMapping[url] = (group, expired)
+        self.groupOrder.append(url)
 
         do {
             try self.fileManager.createDirectoryAtPath(group, withIntermediateDirectories: true, attributes: nil)
@@ -109,11 +117,27 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     public func removeGroup(url: String) {
         let url = url.hasSuffix("/") ? url : url + "/"
         let group = self.root + getUrlHash(url) + "/"
-        self.groups.removeValueForKey(url)
+        
+        self.groupMapping.removeValueForKey(url)
+        if let index = self.groupOrder.indexOf(url) {
+            self.groupOrder.removeAtIndex(index)
+        }
+        
         remove(group)
     }
 
-    public func openInputStream(path: String, range: Range<Int64>?) throws -> (WebCacheStorageInfo, WebCacheInputStream)? {
+    public func getSize(path: String) -> Int64? {
+        do {
+            let file = NSURL(fileURLWithPath: path)
+            var fileSizeValue: AnyObject?
+            try file.getResourceValue(&fileSizeValue, forKey: NSURLFileSizeKey)
+            return (fileSizeValue as? NSNumber)?.longLongValue
+        } catch {
+            return nil
+        }
+    }
+
+    public func openInputStream(path: String, offset: Int64, length: Int64?) throws -> (info: WebCacheStorageInfo, input: WebCacheInputStream)? {
         guard let meta = getMeta(path) else {
             return nil
         }
@@ -122,66 +146,56 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
             return nil
         }
         
-        let fileSize = input.seekToEndOfFile()
-        var offset = range?.startIndex ?? 0
-        var limit = Int64(fileSize)
+        let fileSize = Int64(input.seekToEndOfFile())
+        let offset = offset ?? 0
+        let length = length ?? ((meta.totalLength ?? fileSize) - offset)
         
-        if let range = range {
-            if UInt64(range.endIndex) > fileSize {
-                input.closeFile()
-                return nil
-            }
-            
-            offset = range.startIndex
-            limit = Int64(range.count)
-        } else {
-            if meta.totalLength != limit {
-                input.closeFile()
-                return nil
-            }
+        if offset + length > fileSize {
+            input.closeFile()
+            return nil
         }
         
         input.seekToFileOffset(UInt64(offset))
-        return (meta, WebCacheFileInputStream(handle: input, limit: limit))
+        return (meta, WebCacheFileInputStream(handle: input, limit: length))
     }
     
     public func openOutputStream(path: String, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream? {
         if let storedMeta = getMeta(path) {
-            if meta != storedMeta {
-                if offset == 0 {
-                    setMeta(path, meta: meta)
-                } else {
-                    remove(path)
-                    return nil
-                }
+            if meta != storedMeta && offset != 0 {
+                remove(path)
+                return nil
             }
         } else {
-            if offset == 0 {
-                setMeta(path, meta: meta)
-                if let handle = NSFileHandle(forWritingAtPath: path) {
-                    return WebCacheFileOutputStream(handle: handle)
-                }
+            if offset != 0 {
+                return nil
             }
-            return nil
+        }
+        
+        if offset == 0 {
+            setMeta(path, meta: meta)
         }
         
         guard let handle = NSFileHandle(forWritingAtPath: path) else {
             return nil
         }
         
-        let fileSize = handle.seekToEndOfFile()
-        if UInt64(offset) > fileSize {
-            handle.closeFile()
-            return nil
+        if offset > 0 {
+            let fileSize = handle.seekToEndOfFile()
+            if UInt64(offset) > fileSize {
+                handle.closeFile()
+                return nil
+            }
+            
+            handle.truncateFileAtOffset(UInt64(offset))
         }
         
-        handle.truncateFileAtOffset(UInt64(offset))
         return WebCacheFileOutputStream(handle: handle)
     }
 
     public func removeAll() {
         do {
-            self.groups.removeAll()
+            self.groupMapping.removeAll()
+            self.groupOrder.removeAll()
             try self.fileManager.removeItemAtPath(self.root)
             try self.fileManager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
         } catch {
