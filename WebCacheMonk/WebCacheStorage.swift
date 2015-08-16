@@ -154,7 +154,7 @@ public extension WebCacheStorageAdapter {
 
 //---------------------------------------------------------------------------
 
-public class WebCacheStorage : WebCacheStore {
+public class WebCacheStorage : WebCacheMutableStore {
     private var queue: dispatch_queue_t
     private var adapter: WebCacheStorageAdapter
     
@@ -167,7 +167,7 @@ public class WebCacheStorage : WebCacheStore {
         dispatch_async(self.queue, block)
     }
 
-    public func fetch(url: String, offset: Int64?, length: Int64?, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         perform() {
             do {
                 receiver.onReceiveInited(response: nil, progress: progress)
@@ -216,7 +216,7 @@ public class WebCacheStorage : WebCacheStore {
         }
     }
 
-    public func check(url: String, offset: Int64?, length: Int64?, completion: (Bool) -> Void) {
+    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Bool) -> Void) {
         perform() {
             let (path, _) = self.adapter.getPath(url)
             guard let fileSize = self.adapter.getSize(path)
@@ -231,7 +231,7 @@ public class WebCacheStorage : WebCacheStore {
         }
     }
     
-    public func store(url: String, expired: WebCacheExpiration = .Default) -> WebCacheReceiver {
+    public func store(url: String, expired: WebCacheExpiration = .Default) -> WebCacheReceiver? {
         return WebCacheStorageReceiver(url: url, expired: expired, store: self)
     }
     

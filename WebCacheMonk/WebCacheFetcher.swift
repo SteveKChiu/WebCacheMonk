@@ -37,7 +37,7 @@ public class WebCacheFetcher : WebCacheSource {
         self.session = NSURLSession(configuration: configuration ?? NSURLSessionConfiguration.ephemeralSessionConfiguration(), delegate: self.bridge, delegateQueue: nil)
     }
 
-    public func fetch(url: String, offset: Int64?, length: Int64?, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         let request = NSMutableURLRequest(URL: NSURL(string: url)!)
         request.HTTPMethod = "GET"
         request.setValue("gzip, identity", forHTTPHeaderField: "Accept-Encoding")

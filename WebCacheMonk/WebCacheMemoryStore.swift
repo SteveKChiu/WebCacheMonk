@@ -40,10 +40,10 @@ private class WebCacheDataInfo : NSObject {
 
 //---------------------------------------------------------------------------
 
-public class WebCacheMemoryStore : WebCacheStore {
+public class WebCacheMemoryStore : WebCacheMutableStore {
     private var cache: NSCache
     
-    public init(sizeLimit: Int = 4 * 1024 * 1024, countLimit: Int = 0) {
+    public init(sizeLimit: Int = 64 * 1024 * 1024, countLimit: Int = 0) {
         self.cache = NSCache()
         self.cache.name = "WebCacheMemoryStore"
         self.cache.totalCostLimit = sizeLimit
@@ -95,7 +95,7 @@ public class WebCacheMemoryStore : WebCacheStore {
         return (info, data)
     }
 
-    public func fetch(url: String, offset: Int64?, length: Int64?, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         receiver.onReceiveInited(response: nil, progress: progress)
         
         guard let (info, data) = fetch(url, offset: offset, length: length) else {
@@ -115,7 +115,7 @@ public class WebCacheMemoryStore : WebCacheStore {
         receiver.onReceiveFinished()
     }
 
-    public func fetch(url: String, offset: Int64?, length: Int64?, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
         guard let (_, data) = fetch(url, offset: offset, length: length) else {
             completion(nil)
             return
@@ -127,7 +127,7 @@ public class WebCacheMemoryStore : WebCacheStore {
         progress?.completedUnitCount += length
     }
 
-    public func check(url: String, offset: Int64?, length: Int64?, completion: (Bool) -> Void) {
+    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Bool) -> Void) {
         guard let info = self.cache.objectForKey(url) as? WebCacheDataInfo else {
             completion(false)
             return
@@ -144,7 +144,7 @@ public class WebCacheMemoryStore : WebCacheStore {
         completion(offset + length <= Int64(info.data.length))
     }
     
-    public func store(url: String, expired: WebCacheExpiration = .Default) -> WebCacheReceiver {
+    public func store(url: String, expired: WebCacheExpiration = .Default) -> WebCacheReceiver? {
         return WebCacheDataReceiver(url: url, acceptPartial: false, sizeLimit: self.cache.totalCostLimit / 4) {
             receiver in
             

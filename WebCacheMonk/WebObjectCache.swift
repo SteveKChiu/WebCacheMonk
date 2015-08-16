@@ -103,11 +103,7 @@ public class WebObjectCache<OBJECT> {
             }
         }
         
-        if let cacheStore = self.dataSource as? WebCache {
-            cacheStore.fetch(url, expired: expired, progress: progress, receiver: receiver)
-        } else {
-            self.dataSource.fetch(url, progress: progress, receiver: receiver)
-        }
+        self.dataSource.fetch(url, offset: nil, length: nil, expired: expired, progress: progress, receiver: receiver)
     }
     
     public func store(url: String, value: OBJECT) {
@@ -122,21 +118,21 @@ public class WebObjectCache<OBJECT> {
     public func change(url: String, expired: WebCacheExpiration) {
         if expired.isExpired {
             self.remove(url)
-        } else if let sourceStore = self.dataSource as? WebCacheStore {
+        } else if let sourceStore = self.dataSource as? WebCacheMutableStore {
             sourceStore.change(url, expired: expired)
         }
     }
     
     public func remove(url: String) {
         self.cache.removeObjectForKey(url)
-        if let sourceStore = self.dataSource as? WebCacheStore {
+        if let sourceStore = self.dataSource as? WebCacheMutableStore {
             sourceStore.remove(url)
         }
     }
     
     public func removeAll() {
         self.cache.removeAllObjects()
-        if let sourceStore = self.dataSource as? WebCacheStore {
+        if let sourceStore = self.dataSource as? WebCacheMutableStore {
             sourceStore.removeAll()
         }
     }

@@ -28,7 +28,7 @@ import UIKit
 
 //---------------------------------------------------------------------------
 
-public class WebCacheURLProtocol : NSURLProtocol {
+public class WebCacheProtocol : NSURLProtocol {
     public class func prepareToFetch(request: NSURLRequest) -> (NSURL, WebCacheSource)? {
         return nil
     }
@@ -77,7 +77,7 @@ public class WebCacheURLProtocol : NSURLProtocol {
             }
         }
         
-        dataSource.fetch(url.absoluteString, offset: offset, length: length, progress: self.progress, receiver: WebCacheURLProtocolReceiver(self))
+        dataSource.fetch(url.absoluteString, offset: offset, length: length, expired: .Default, progress: self.progress, receiver: WebCacheProtocolReceiver(self))
     }
      
     public override func stopLoading() {
@@ -93,12 +93,12 @@ public class WebCacheURLProtocol : NSURLProtocol {
 
 //---------------------------------------------------------------------------
 
-private class WebCacheURLProtocolReceiver : WebCacheReceiver {
-    weak var handler: WebCacheURLProtocol?
+private class WebCacheProtocolReceiver : WebCacheReceiver {
+    weak var handler: WebCacheProtocol?
     var serverResponse: NSHTTPURLResponse?
     var progress: NSProgress?
 
-    init(_ handler: WebCacheURLProtocol) {
+    init(_ handler: WebCacheProtocol) {
         self.handler = handler
     }
 

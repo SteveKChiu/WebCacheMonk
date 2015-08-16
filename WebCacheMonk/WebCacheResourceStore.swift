@@ -43,6 +43,13 @@ public class WebCacheResourceStore : WebCacheStore {
         addMapping(url, resource: resource, bundle: bundle)
     }
 
+    public convenience init(mapping: [(String, String)], bundle: NSBundle? = nil) {
+        self.init()
+        for (url, resource) in mapping {
+            addMapping(url, resource: resource, bundle: bundle)
+        }
+    }
+
     public func addMapping(url: String, resource: String, bundle: NSBundle? = nil) {
         let name: String
         let ext: String
@@ -115,7 +122,7 @@ public class WebCacheResourceStore : WebCacheStore {
         return (UTIMimeType?.takeUnretainedValue() ?? "application/octet-stream") as String
     }
 
-    public func fetch(url: String, offset: Int64?, length: Int64?, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         dispatch_async(self.queue) {
             receiver.onReceiveInited(response: nil, progress: progress)
         
@@ -173,26 +180,6 @@ public class WebCacheResourceStore : WebCacheStore {
             let length = length ?? (fileSize - offset)
             completion(offset + length <= fileSize)
         }
-    }
-    
-    public func store(url: String, expired: WebCacheExpiration = .Default) -> WebCacheReceiver {
-        return WebCacheDataReceiver(url: url, acceptPartial: false, sizeLimit: 0)
-    }
-    
-    public func store(url: String, info: WebCacheInfo, expired: WebCacheExpiration = .Default, data: NSData) {
-        // do nothing
-    }
-    
-    public func change(url: String, expired: WebCacheExpiration) {
-        // do nothing
-    }
-    
-    public func remove(url: String) {
-        // do nothing
-    }
-    
-    public func removeAll() {
-        // do nothing
     }
 }
 
