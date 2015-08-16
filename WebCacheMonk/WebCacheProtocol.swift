@@ -42,7 +42,7 @@ public class WebCacheProtocol : NSURLProtocol {
     }
     
     private var progress: NSProgress?
-    private var hasContentRange = false
+    private var hasRange = false
     
     public override func startLoading() {
         guard let client = self.client else {
@@ -55,13 +55,13 @@ public class WebCacheProtocol : NSURLProtocol {
         }
         
         self.progress = NSProgress(totalUnitCount: -1)
-        self.hasContentRange = false
+        self.hasRange = false
         
         var offset: Int64?
         var length: Int64?
         
-        if let range = self.request.valueForHTTPHeaderField("Content-Range") {
-            self.hasContentRange = true
+        if let range = self.request.valueForHTTPHeaderField("Range") {
+            self.hasRange = true
             let range = range as NSString
             
             let rex = try! NSRegularExpression(pattern: "bytes\\s*=\\s*(\\d+)\\-(\\d*)", options: [])
@@ -128,7 +128,7 @@ private class WebCacheProtocolReceiver : WebCacheReceiver {
             headers["Content-Length"] = "\(length)"
         }
         
-        if handler.hasContentRange {
+        if handler.hasRange {
             guard let totalLength = info.totalLength else {
                self.onReceiveAborted(handler.error("err.length.unknown"))
                return

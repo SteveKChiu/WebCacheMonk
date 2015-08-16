@@ -137,7 +137,7 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
                 break
                             
             case 206:
-                if let range = http.allHeaderFields["Range"] as? NSString {
+                if let range = http.allHeaderFields["Content-Range"] as? NSString {
                     let rex = try! NSRegularExpression(pattern: "bytes\\s+(\\d+)\\-(\\d+)/(\\d+)", options: [])
                     let results = rex.matchesInString(range as String, options: [], range: NSRange(0 ..< range.length))
                     if results[0].range.location != NSNotFound {
