@@ -96,7 +96,7 @@ public class WebObjectCache<OBJECT> {
                 object in
                 
                 if let object = object {
-                    self.store(url, value: object)
+                    self.store(url, object: object)
                 }
                 
                 completion(object)
@@ -106,12 +106,12 @@ public class WebObjectCache<OBJECT> {
         self.dataSource.fetch(url, offset: nil, length: nil, expired: expired, progress: progress, receiver: receiver)
     }
     
-    public func store(url: String, value: OBJECT) {
-        let cost = self.costEvaluator?(value) ?? 0
-        if let object = value as? AnyObject {
+    public func store(url: String, object: OBJECT) {
+        let cost = self.costEvaluator?(object) ?? 0
+        if let object = object as? AnyObject {
             self.cache.setObject(object, forKey: url, cost: cost)
         } else {
-            self.cache.setObject(WebObjectWrapper(value), forKey: url, cost: cost)
+            self.cache.setObject(WebObjectWrapper(object), forKey: url, cost: cost)
         }
     }
     

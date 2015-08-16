@@ -29,24 +29,35 @@ import UIKit
 //---------------------------------------------------------------------------
 
 public class WebImageCache : WebObjectCache<UIImage> {
-    public static let shared = WebImageCache()
+    public static var shared = WebImageCache()
 
     public init(name: String? = nil, configuration: NSURLSessionConfiguration? = nil) {
         super.init(name: name ?? "WebImageCache", configuration: configuration, decoder: WebImageCache.decode)
+        self.costEvaluator = WebImageCache.evaluate
+        self.totalCostLimit = 128 * 1024 * 1024
     }
     
     public init(path: String, configuration: NSURLSessionConfiguration? = nil) {
         super.init(path: path, configuration: configuration, decoder: WebImageCache.decode)
+        self.costEvaluator = WebImageCache.evaluate
+        self.totalCostLimit = 128 * 1024 * 1024
     }
 
     public init(source: WebCacheSource) {
         super.init(source: source, decoder: WebImageCache.decode)
+        self.costEvaluator = WebImageCache.evaluate
+        self.totalCostLimit = 128 * 1024 * 1024
     }
     
     private static func decode(data: NSData, completion: (UIImage?) -> Void) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0)) {
             completion(UIImage(data: data))
         }
+    }
+
+    private static func evaluate(image: UIImage) -> Int {
+        let size = image.size
+        return Int(size.width * size.height * 4)
     }
 }
 

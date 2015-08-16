@@ -43,7 +43,7 @@ private class WebCacheDataInfo : NSObject {
 public class WebCacheMemoryStore : WebCacheMutableStore {
     private var cache: NSCache
     
-    public init(sizeLimit: Int = 64 * 1024 * 1024, countLimit: Int = 0) {
+    public init(sizeLimit: Int = 128 * 1024 * 1024, countLimit: Int = 0) {
         self.cache = NSCache()
         self.cache.name = "WebCacheMemoryStore"
         self.cache.totalCostLimit = sizeLimit
