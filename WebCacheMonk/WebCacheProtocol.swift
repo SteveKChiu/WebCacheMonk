@@ -112,11 +112,16 @@ private class WebCacheProtocolReceiver : WebCacheReceiver {
             return
         }
     
+        var contentType = info.mimeType
+        if let textEncoding = info.textEncoding {
+            contentType += "; charset=" + textEncoding
+        }
+    
         var headers = [String: String]()
         headers["Access-Control-Allow-Origin"] = "*"
         headers["Accept-Ranges"] = "bytes"
         headers["Cache-Control"] = "no-cache"
-        headers["Content-Type"] = info.mimeType
+        headers["Content-Type"] = contentType
         headers["Content-Encoding"] = "identity"
         
         for (k, v) in info.headers {
