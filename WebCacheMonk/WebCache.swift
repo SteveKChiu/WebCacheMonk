@@ -102,15 +102,18 @@ public class WebCache : WebCacheMutableStore {
                 return
             }
             
-            guard let dataSource = self.dataSource,
-                      dataStore = self.dataStore as? WebCacheMutableStore,
-                      storeReceiver = dataStore.store(url, expired: expired) else {
+            guard let dataSource = self.dataSource else {
                 receiver.onReceiveAborted(nil)
                 return
             }
             
-            let filter = WebCacheFilter(receiver, filter: storeReceiver)
-            dataSource.fetch(url, offset: offset, length: length, expired: expired, progress: progress, receiver: filter)
+            var receiver = receiver
+            if let dataStore = self.dataStore as? WebCacheMutableStore,
+                   storeReceiver = dataStore.store(url, expired: expired) {
+                receiver = WebCacheFilter(receiver, filter: storeReceiver)
+            }
+            
+            dataSource.fetch(url, offset: offset, length: length, expired: expired, progress: progress, receiver: receiver)
         })
     }
 
