@@ -106,10 +106,15 @@ public class WebCacheFilter : WebCacheReceiver {
     }
     
     public func onReceiveFinished() {
+        if let completion = self.completion {
+            self.completion = nil
+            if completion(true, nil, self.progress) {
+                return
+            }
+        }
+
         self.filter?.onReceiveFinished()
         self.receiver.onReceiveFinished()
-        self.completion?(true, nil, self.progress)
-        self.completion = nil
     }
     
     public func onReceiveAborted(error: NSError?) {

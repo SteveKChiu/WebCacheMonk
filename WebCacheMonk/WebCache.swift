@@ -95,20 +95,12 @@ public class WebCache : WebCacheMutableStore {
         self.dataStore.fetch(url, offset: offset, length: length, expired: expired, progress: progress, receiver: WebCacheFilter(receiver) {
             found, error, progress in
             
-            if error != nil {
+            if found || error != nil || progress?.cancelled == true {
                 return false
             }
             
-            receiver.onReceiveInited(response: nil, progress: progress)
-            
-            if progress?.cancelled == true {
-                receiver.onReceiveAborted(nil)
-                return true
-            }
-            
             guard let dataSource = self.dataSource else {
-                receiver.onReceiveAborted(nil)
-                return true
+                return false
             }
             
             var receiver = receiver
