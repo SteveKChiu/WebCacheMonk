@@ -137,7 +137,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         
         let fileSize = Int64(input.seekToEndOfFile())
         let offset = offset ?? 0
-        let length = length ?? ((meta.totalLength ?? fileSize) - offset)
+        let length = length ?? (fileSize - offset)
         
         if offset + length > fileSize {
             input.closeFile()
@@ -170,6 +170,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         
         if offset > 0 {
             let fileSize = handle.seekToEndOfFile()
+            
             if UInt64(offset) > fileSize {
                 handle.closeFile()
                 return nil

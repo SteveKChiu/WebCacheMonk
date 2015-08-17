@@ -258,6 +258,10 @@ public class WebCacheStorage : WebCacheMutableStore {
         }
     }
     
+    public func addGroup(url: String, expired: WebCacheExpiration = .Default) {
+        addGroup(url, tag: ["expired": expired])
+    }
+
     public func addGroup(url: String, tag: [String: Any]?) {
         perform() {
             self.adapter.addGroup(url, tag: tag)
