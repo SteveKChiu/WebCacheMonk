@@ -93,18 +93,22 @@ public class WebCache : WebCacheMutableStore {
 
     public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         self.dataStore.fetch(url, offset: offset, length: length, expired: expired, progress: progress, receiver: WebCacheFilter(receiver) {
-            progress in
+            found, error, progress in
+            
+            if error != nil {
+                return false
+            }
             
             receiver.onReceiveInited(response: nil, progress: progress)
             
             if progress?.cancelled == true {
                 receiver.onReceiveAborted(nil)
-                return
+                return true
             }
             
             guard let dataSource = self.dataSource else {
                 receiver.onReceiveAborted(nil)
-                return
+                return true
             }
             
             var receiver = receiver
@@ -114,24 +118,32 @@ public class WebCache : WebCacheMutableStore {
             }
             
             dataSource.fetch(url, offset: offset, length: length, expired: expired, progress: progress, receiver: receiver)
+            return true
         })
     }
 
-    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil) {
-        self.check(url, offset: offset, length: length) {
+    public func prefetch(url: String, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, completion: ((Bool) -> Void)? = nil) {
+        self.check(url) {
             found in
             
-            if !found {
+            if found {
+                completion?(true)
                 return
             }
             
             guard let dataSource = self.dataSource,
                       dataStore = self.dataStore as? WebCacheMutableStore,
                       storeReceiver = dataStore.store(url, expired: expired) else {
+                completion?(false)
                 return
             }
 
-            dataSource.fetch(url, offset: offset, length: length, expired: expired, progress: progress, receiver: storeReceiver)
+            dataSource.fetch(url, offset: nil, length: nil, expired: expired, progress: progress, receiver: WebCacheFilter(storeReceiver) {
+                found, error, progress in
+                
+                completion?(false)
+                return false
+            })
         }
     }
 

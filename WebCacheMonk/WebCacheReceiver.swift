@@ -77,11 +77,11 @@ public class WebCacheFilter : WebCacheReceiver {
     private let receiver: WebCacheReceiver
     private var filter: WebCacheReceiver?
     private var progress: NSProgress?
-    private var onMissingHandler: ((NSProgress?) -> Void)?
+    private var completion: ((Bool, NSError?, NSProgress?) -> Bool)?
     
-    public init(_ receiver: WebCacheReceiver, onMissing: (NSProgress?) -> Void) {
+    public init(_ receiver: WebCacheReceiver, completion: (Bool, NSError?, NSProgress?) -> Bool) {
         self.receiver = receiver
-        self.onMissingHandler = onMissing
+        self.completion = completion
     }
     
     public init(_ receiver: WebCacheReceiver, filter: WebCacheReceiver) {
@@ -108,15 +108,20 @@ public class WebCacheFilter : WebCacheReceiver {
     public func onReceiveFinished() {
         self.filter?.onReceiveFinished()
         self.receiver.onReceiveFinished()
+        self.completion?(true, nil, self.progress)
+        self.completion = nil
     }
     
     public func onReceiveAborted(error: NSError?) {
-        if let onMissingHandler = self.onMissingHandler where error == nil {
-            onMissingHandler(self.progress)
-        } else {
-            self.filter?.onReceiveAborted(error)
-            self.receiver.onReceiveAborted(error)
+        if let completion = self.completion {
+            self.completion = nil
+            if completion(false, error, self.progress) {
+                return
+            }
         }
+
+        self.filter?.onReceiveAborted(error)
+        self.receiver.onReceiveAborted(error)
     }
 }
 
