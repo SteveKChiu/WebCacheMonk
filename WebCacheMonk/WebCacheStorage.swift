@@ -58,16 +58,16 @@ public protocol WebCacheOutputStream : class {
 //---------------------------------------------------------------------------
 
 public protocol WebCacheStorageAdapter : class {
-    func getPath(url: String) -> (path: String, defaultExpiration: WebCacheExpiration)
-    func addGroup(url: String, expired: WebCacheExpiration)
+    func getPath(url: String) -> (path: String, tag: [String: Any]?)
+    func addGroup(url: String, tag: [String: Any]?)
     func removeGroup(url: String)
     
     func getSize(path: String) -> Int64?
     func getMeta(path: String) -> WebCacheStorageInfo?
     func setMeta(path: String, meta: WebCacheStorageInfo)
 
-    func openInputStream(path: String, offset: Int64, length: Int64?) throws -> (info: WebCacheStorageInfo, input: WebCacheInputStream)?
-    func openOutputStream(path: String, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream?
+    func openInputStream(path: String, tag: [String: Any]?, offset: Int64, length: Int64?) throws -> (info: WebCacheStorageInfo, input: WebCacheInputStream)?
+    func openOutputStream(path: String, tag: [String: Any]?, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream?
     
     func remove(path: String)
     func removeAll()
@@ -173,8 +173,8 @@ public class WebCacheStorage : WebCacheMutableStore {
                 receiver.onReceiveInited(response: nil, progress: progress)
                 let offset = offset ?? 0
 
-                let (file, _) = self.adapter.getPath(url)
-                guard let (meta, input) = try self.adapter.openInputStream(file, offset: offset, length: length) else {
+                let (file, tag) = self.adapter.getPath(url)
+                guard let (meta, input) = try self.adapter.openInputStream(file, tag: tag, offset: offset, length: length) else {
                     receiver.onReceiveAborted(nil)
                     return;
                 }
@@ -258,9 +258,9 @@ public class WebCacheStorage : WebCacheMutableStore {
         }
     }
     
-    public func addGroup(url: String, expired: WebCacheExpiration = .Default) {
+    public func addGroup(url: String, tag: [String: Any]?) {
         perform() {
-            self.adapter.addGroup(url, expired: expired)
+            self.adapter.addGroup(url, tag: tag)
         }
     }
 
@@ -295,15 +295,17 @@ private class WebCacheStorageReceiver : WebCacheReceiver {
         self.store.perform() {
             do {
                 let adapter = self.store.adapter
-                let (path, expiration) = adapter.getPath(self.url)
+                let (path, tag) = adapter.getPath(self.url)
                 
                 if case WebCacheExpiration.Default = self.expiration {
-                    self.expiration = expiration
+                    if let expired = tag?["expired"] as? WebCacheExpiration {
+                        self.expiration = expired
+                    }
                 }
                 
                 if !self.expiration.isExpired {
                     let meta = WebCacheStorageInfo(from: info, expired: self.expiration)
-                    self.output = try adapter.openOutputStream(path, meta: meta, offset: offset)
+                    self.output = try adapter.openOutputStream(path, tag: tag, meta: meta, offset: offset)
                 }
             } catch {
                 NSLog("fail to open file for %@, error = %@", self.url, error as NSError)

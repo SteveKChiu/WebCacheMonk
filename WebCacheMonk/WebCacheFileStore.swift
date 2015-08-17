@@ -74,7 +74,7 @@ public class WebCacheFileOutputStream : WebCacheOutputStream {
 
 public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     private var root: String
-    private var groupMapping = [String: (String, WebCacheExpiration)]()
+    private var groupMapping = [String: (String, [String: Any]?)]()
     private var groupOrder = [String]()
     
     public init(root: String) {
@@ -86,25 +86,25 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         }
     }
 
-    public func getPath(url: String) -> (path: String, defaultExpiration: WebCacheExpiration) {
+    public func getPath(url: String) -> (path: String, tag: [String: Any]?) {
         for group_url in self.groupOrder {
             if url.hasPrefix(group_url) {
-                if let (root, expired) = self.groupMapping[group_url] {
-                    return (root + getUrlHash(url), expired)
+                if let (root, tag) = self.groupMapping[group_url] {
+                    return (root + getUrlHash(url), tag)
                 }
             }
         }
-        return (self.root + getUrlHash(url), .Default)
+        return (self.root + getUrlHash(url), nil)
     }
 
-    public func addGroup(url: String, expired: WebCacheExpiration) {
+    public func addGroup(url: String, tag: [String: Any]?) {
         let url = url.hasSuffix("/") ? url : url + "/"
         if self.groupMapping[url] != nil {
             return
         }
         let group = self.root + getUrlHash(url) + "/"
         
-        self.groupMapping[url] = (group, expired)
+        self.groupMapping[url] = (group, tag)
         self.groupOrder.append(url)
 
         do {
@@ -126,7 +126,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         remove(group)
     }
 
-    public func openInputStream(path: String, offset: Int64, length: Int64?) throws -> (info: WebCacheStorageInfo, input: WebCacheInputStream)? {
+    public func openInputStream(path: String, tag: [String: Any]?, offset: Int64, length: Int64?) throws -> (info: WebCacheStorageInfo, input: WebCacheInputStream)? {
         guard let meta = getMeta(path) else {
             return nil
         }
@@ -148,7 +148,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         return (meta, WebCacheFileInputStream(handle: input, limit: length))
     }
     
-    public func openOutputStream(path: String, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream? {
+    public func openOutputStream(path: String, tag: [String: Any]?, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream? {
         if let storedMeta = getMeta(path) {
             if meta != storedMeta && offset != 0 {
                 remove(path)
