@@ -126,17 +126,6 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         remove(group)
     }
 
-    public func getSize(path: String) -> Int64? {
-        do {
-            let file = NSURL(fileURLWithPath: path)
-            var fileSizeValue: AnyObject?
-            try file.getResourceValue(&fileSizeValue, forKey: NSURLFileSizeKey)
-            return (fileSizeValue as? NSNumber)?.longLongValue
-        } catch {
-            return nil
-        }
-    }
-
     public func openInputStream(path: String, offset: Int64, length: Int64?) throws -> (info: WebCacheStorageInfo, input: WebCacheInputStream)? {
         guard let meta = getMeta(path) else {
             return nil
