@@ -54,6 +54,7 @@ public protocol WebCacheMutableStore : WebCacheStore {
     func store(url: String, expired: WebCacheExpiration) -> WebCacheReceiver?
     func change(url: String, expired: WebCacheExpiration)
     func remove(url: String)
+    func removeExpired()
     func removeAll()
 }
 
@@ -133,7 +134,7 @@ public class WebCache : WebCacheMutableStore {
             dataSource.fetch(url, offset: nil, length: nil, expired: expired, progress: progress, receiver: WebCacheFilter(storeReceiver) {
                 found, error, progress in
                 
-                completion?(false)
+                completion?(found)
                 return false
             })
         }
@@ -182,6 +183,15 @@ public class WebCache : WebCacheMutableStore {
         }
     }
     
+    public func removeExpired() {
+        if let dataStore = self.dataStore as? WebCacheMutableStore {
+            dataStore.removeExpired()
+        }
+        if let sourceStore = self.dataSource as? WebCacheMutableStore {
+            sourceStore.removeExpired()
+        }
+    }
+
     public func removeAll() {
         if let dataStore = self.dataStore as? WebCacheMutableStore {
             dataStore.removeAll()

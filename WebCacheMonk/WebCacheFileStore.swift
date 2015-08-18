@@ -182,6 +182,18 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         return WebCacheFileOutputStream(handle: handle)
     }
 
+    public func removeExpired() {
+        guard let enumerator = self.fileManager.enumeratorAtPath(self.root) else {
+            return
+        }
+        
+        while let path = enumerator.nextObject() as? String {
+            if let meta = getMeta(path) where meta.expiration.isExpired {
+                remove(path)
+            }
+        }
+    }
+
     public func removeAll() {
         do {
             self.groupMapping.removeAll()

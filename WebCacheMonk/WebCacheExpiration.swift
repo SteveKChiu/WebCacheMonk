@@ -95,3 +95,18 @@ public enum WebCacheExpiration {
         return fmt
     }()
 }
+
+//---------------------------------------------------------------------------
+
+public func == (lhs: WebCacheExpiration, rhs: WebCacheExpiration) -> Bool {
+    switch (lhs, rhs) {
+    case (.Default, .Default):      return true
+    case (.Never, .Never):          return true
+    case let (.Time(a), .Time(b)):  return a == b
+    default:                        return false
+    }
+}
+
+public func != (lhs: WebCacheExpiration, rhs: WebCacheExpiration) -> Bool {
+    return !(lhs == rhs)
+}

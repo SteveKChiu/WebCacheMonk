@@ -34,16 +34,18 @@ private class WebCacheDataInfo : NSObject {
     
     init(from: WebCacheInfo, expired: WebCacheExpiration, data: NSData) {
         self.meta = WebCacheStorageInfo(from: from, expired: expired)
-        self.data = data
+        self.data = NSData(data: data)
     }
 }
 
 //---------------------------------------------------------------------------
 
 public class WebCacheMemoryStore : WebCacheMutableStore {
+    private var queue: dispatch_queue_t
     private var cache: NSCache
     
     public init(sizeLimit: Int = 128 * 1024 * 1024, countLimit: Int = 0) {
+        self.queue = dispatch_queue_create("WebCacheMemoryStore", DISPATCH_QUEUE_SERIAL)
         self.cache = NSCache()
         self.cache.name = "WebCacheMemoryStore"
         self.cache.totalCostLimit = sizeLimit
@@ -96,52 +98,58 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
     }
 
     public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
-        receiver.onReceiveInited(response: nil, progress: progress)
+        dispatch_async(self.queue) {
+            receiver.onReceiveInited(response: nil, progress: progress)
         
-        guard let (info, data) = fetch(url, offset: offset, length: length) else {
-            receiver.onReceiveAborted(nil)
-            return
+            guard let (info, data) = self.fetch(url, offset: offset, length: length) else {
+                receiver.onReceiveAborted(nil)
+                return
+            }
+        
+            let offset = offset ?? 0
+            let length = Int64(data.length)
+        
+            progress?.totalUnitCount = length
+            receiver.onReceiveStarted(info.meta, offset: offset, length: length)
+        
+            receiver.onReceiveData(data)
+            progress?.completedUnitCount += length
+        
+            receiver.onReceiveFinished()
         }
-        
-        let offset = offset ?? 0
-        let length = Int64(data.length)
-        
-        progress?.totalUnitCount = length
-        receiver.onReceiveStarted(info.meta, offset: offset, length: length)
-        
-        receiver.onReceiveData(data)
-        progress?.completedUnitCount += length
-        
-        receiver.onReceiveFinished()
     }
 
     public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
-        guard let (_, data) = fetch(url, offset: offset, length: length) else {
-            completion(nil)
-            return
-        }
+        dispatch_async(self.queue) {
+            guard let (_, data) = self.fetch(url, offset: offset, length: length) else {
+                completion(nil)
+                return
+            }
 
-        let length = Int64(data.length)
-        progress?.totalUnitCount = length
-        completion(data)
-        progress?.completedUnitCount += length
+            let length = Int64(data.length)
+            progress?.totalUnitCount = length
+            completion(data)
+            progress?.completedUnitCount += length
+        }
     }
 
     public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Bool) -> Void) {
-        guard let info = self.cache.objectForKey(url) as? WebCacheDataInfo else {
-            completion(false)
-            return
-        }
+        dispatch_async(self.queue) {
+            guard let info = self.cache.objectForKey(url) as? WebCacheDataInfo else {
+                completion(false)
+                return
+            }
         
-        if info.meta.expiration.isExpired {
-            self.cache.removeObjectForKey(url)
-            completion(false)
-            return
-        }
+            if info.meta.expiration.isExpired {
+                self.cache.removeObjectForKey(url)
+                completion(false)
+                return
+            }
 
-        let offset = offset ?? 0
-        let length = length ?? (Int64(info.data.length) - offset)
-        completion(offset + length <= Int64(info.data.length))
+            let offset = offset ?? 0
+            let length = length ?? (Int64(info.data.length) - offset)
+            completion(offset + length <= Int64(info.data.length))
+        }
     }
     
     public func store(url: String, expired: WebCacheExpiration = .Default) -> WebCacheReceiver? {
@@ -158,29 +166,41 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
     }
     
     public func store(url: String, info: WebCacheInfo, expired: WebCacheExpiration = .Default, data: NSData) {
-        if expired.isExpired {
-            self.cache.removeObjectForKey(url)
-            return
-        }
+        dispatch_barrier_async(self.queue) {
+            if expired.isExpired {
+                self.cache.removeObjectForKey(url)
+                return
+            }
         
-        let info = WebCacheDataInfo(from: info, expired: expired, data: data)
-        self.cache.setObject(info, forKey: url, cost: data.length)
+            let info = WebCacheDataInfo(from: info, expired: expired, data: data)
+            self.cache.setObject(info, forKey: url, cost: data.length)
+        }
     }
     
     public func change(url: String, expired: WebCacheExpiration) {
-        if expired.isExpired {
-            self.cache.removeObjectForKey(url)
-        } else if let info = self.cache.objectForKey(url) as? WebCacheDataInfo {
-            info.meta.expiration = expired
+        dispatch_async(self.queue) {
+            if expired.isExpired {
+                self.cache.removeObjectForKey(url)
+            } else if let info = self.cache.objectForKey(url) as? WebCacheDataInfo {
+                info.meta.expiration = expired
+            }
         }
     }
     
+    public func removeExpired() {
+        // not supported
+    }
+    
     public func remove(url: String) {
-        self.cache.removeObjectForKey(url)
+        dispatch_async(self.queue) {
+            self.cache.removeObjectForKey(url)
+        }
     }
     
     public func removeAll() {
-        self.cache.removeAllObjects()
+        dispatch_async(self.queue) {
+            self.cache.removeAllObjects()
+        }
     }
 }
 

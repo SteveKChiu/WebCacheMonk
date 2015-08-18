@@ -70,6 +70,7 @@ public protocol WebCacheStorageAdapter : class {
     func openOutputStream(path: String, tag: [String: Any]?, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream?
     
     func remove(path: String)
+    func removeExpired()
     func removeAll()
 }
 
@@ -238,7 +239,7 @@ public class WebCacheStorage : WebCacheMutableStore {
     public func change(url: String, expired: WebCacheExpiration) {
         perform() {
             let (path, _) = self.adapter.getPath(url)
-            if let meta = self.adapter.getMeta(path) {
+            if let meta = self.adapter.getMeta(path) where meta.expiration != expired {
                 meta.expiration = expired
                 self.adapter.setMeta(path, meta: meta)
             }
@@ -252,6 +253,12 @@ public class WebCacheStorage : WebCacheMutableStore {
         }
     }
         
+    public func removeExpired() {
+        perform() {
+            self.adapter.removeExpired()
+        }
+    }
+
     public func removeAll() {
         perform() {
             self.adapter.removeAll()
