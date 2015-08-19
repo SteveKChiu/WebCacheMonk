@@ -98,11 +98,12 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     }
 
     public func addGroup(url: String, tag: [String: Any]?) {
-        let url = url.hasSuffix("/") ? url : url + "/"
+        let group = self.root + getUrlHash(url) + "/"
+
         if self.groupMapping[url] != nil {
+            self.groupMapping[url] = (group, tag)
             return
         }
-        let group = self.root + getUrlHash(url) + "/"
         
         self.groupMapping[url] = (group, tag)
         self.groupOrder.append(url)
@@ -115,14 +116,12 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     }
     
     public func removeGroup(url: String) {
-        let url = url.hasSuffix("/") ? url : url + "/"
-        let group = self.root + getUrlHash(url) + "/"
-        
         self.groupMapping.removeValueForKey(url)
         if let index = self.groupOrder.indexOf(url) {
             self.groupOrder.removeAtIndex(index)
         }
         
+        let group = self.root + getUrlHash(url) + "/"
         remove(group)
     }
 
