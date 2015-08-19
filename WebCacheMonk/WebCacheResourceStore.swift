@@ -31,8 +31,7 @@ import MobileCoreServices
 
 public class WebCacheResourceStore : WebCacheStore {
     private var queue: dispatch_queue_t
-    private var urlMapping = [String: String]()
-    private var urlOrder = [String]()
+    private var mappings = [(url: String, path: String)]()
     
     public init() {
         self.queue = dispatch_queue_create("WebCacheResourceStore", DISPATCH_QUEUE_SERIAL)
@@ -43,9 +42,9 @@ public class WebCacheResourceStore : WebCacheStore {
         addMapping(url, resource: resource, bundle: bundle)
     }
 
-    public convenience init(mapping: [(String, String)], bundle: NSBundle? = nil) {
+    public convenience init(mappings: [(String, String)], bundle: NSBundle? = nil) {
         self.init()
-        for (url, resource) in mapping {
+        for (url, resource) in mappings {
             addMapping(url, resource: resource, bundle: bundle)
         }
     }
@@ -70,33 +69,29 @@ public class WebCacheResourceStore : WebCacheStore {
     public func addMapping(url: String, path: String) {
         var isDir: ObjCBool = false
         if NSFileManager.defaultManager().fileExistsAtPath(path, isDirectory: &isDir) {
-            let url = !isDir || url.hasSuffix("/") ? url : url + "/"
             let path = !isDir || path.hasSuffix("/") ? path : path + "/"
             dispatch_async(self.queue) {
-                self.urlMapping[url] = path
-                self.urlOrder.append(url)
+                let mapping = (url: url, path: path)
+                if let index = self.mappings.indexOf({ $0.url == url }) {
+                    self.mappings[index] = mapping
+                } else {
+                    self.mappings.append(mapping)
+                }
             }
         }
     }
 
     public func removeMapping(url: String) {
         dispatch_async(self.queue) {
-            var url = url
-            if self.urlMapping.removeValueForKey(url) == nil {
-                url += "/"
-                self.urlMapping.removeValueForKey(url)
-            }
-            
-            if let index = self.urlOrder.indexOf(url) {
-                self.urlOrder.removeAtIndex(index)
+            if let index = self.mappings.indexOf({ $0.url == url }) {
+                self.mappings.removeAtIndex(index)
             }
         }
     }
     
     private func getPath(url: String) -> String? {
-        for prefix in self.urlOrder {
+        for (prefix, root) in self.mappings {
             if url.hasPrefix(prefix) {
-                let root = self.urlMapping[prefix]!
                 return root + url.substringFromIndex(advance(url.startIndex, prefix.characters.count))
             }
         }

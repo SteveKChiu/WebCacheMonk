@@ -74,8 +74,7 @@ public class WebCacheFileOutputStream : WebCacheOutputStream {
 
 public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     private var root: String
-    private var groupMapping = [String: (String, [String: Any]?)]()
-    private var groupOrder = [String]()
+    private var groups = [(url: String, root: String, tag: [String: Any]?)]()
     
     public init(root: String) {
         do {
@@ -87,38 +86,35 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     }
 
     public func getPath(url: String) -> (path: String, tag: [String: Any]?) {
-        for group_url in self.groupOrder {
+        for (group_url, root, tag) in self.groups {
             if url.hasPrefix(group_url) {
-                if let (root, tag) = self.groupMapping[group_url] {
-                    return (root + getUrlHash(url), tag)
-                }
+                return (root + getUrlHash(url), tag)
             }
         }
         return (self.root + getUrlHash(url), nil)
     }
 
     public func addGroup(url: String, tag: [String: Any]?) {
-        let group = self.root + getUrlHash(url) + "/"
+        let root = self.root + getUrlHash(url) + "/"
+        let group = (url: url, root: root, tag: tag)
 
-        if self.groupMapping[url] != nil {
-            self.groupMapping[url] = (group, tag)
+        if let index = self.groups.indexOf({ $0.url == url }) {
+            self.groups[index] = group
             return
         }
         
-        self.groupMapping[url] = (group, tag)
-        self.groupOrder.append(url)
+        self.groups.append(group)
 
         do {
-            try self.fileManager.createDirectoryAtPath(group, withIntermediateDirectories: true, attributes: nil)
+            try self.fileManager.createDirectoryAtPath(root, withIntermediateDirectories: true, attributes: nil)
         } catch {
             NSLog("fail to create cache group %@, error = %@", url, error as NSError)
         }
     }
     
     public func removeGroup(url: String) {
-        self.groupMapping.removeValueForKey(url)
-        if let index = self.groupOrder.indexOf(url) {
-            self.groupOrder.removeAtIndex(index)
+        if let index = self.groups.indexOf({ $0.url == url }) {
+            self.groups.removeAtIndex(index)
         }
         
         let group = self.root + getUrlHash(url) + "/"
@@ -195,8 +191,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
 
     public func removeAll() {
         do {
-            self.groupMapping.removeAll()
-            self.groupOrder.removeAll()
+            self.groups.removeAll()
             try self.fileManager.removeItemAtPath(self.root)
             try self.fileManager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
         } catch {
