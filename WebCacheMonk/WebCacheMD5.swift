@@ -48,7 +48,7 @@ public func WebCacheMD5(text: String) -> String {
     var c : UInt32 = 0x98BADCFE
     var d : UInt32 = 0x10325476
     
-    for chunkOffset in stride(from: 0, to: message.count, by: 64) {
+    for chunkOffset in 0.stride(to: message.count, by: 64) {
         let chunk = UnsafePointer<UInt32>(UnsafePointer<UInt8>(message) + chunkOffset)
         let originalA = a
         let originalB = b

@@ -54,7 +54,7 @@ public class WebCacheResourceStore : WebCacheStore {
         let ext: String
         if let r = resource.rangeOfString(".", options: .BackwardsSearch) {
             name = resource.substringToIndex(r.startIndex)
-            ext = resource.substringFromIndex(advance(r.endIndex, 1))
+            ext = resource.substringFromIndex(r.endIndex.advancedBy(1))
         } else {
             name = resource
             ext = ""
@@ -92,7 +92,7 @@ public class WebCacheResourceStore : WebCacheStore {
     private func getPath(url: String) -> String? {
         for (prefix, root) in self.mappings {
             if url.hasPrefix(prefix) {
-                return root + url.substringFromIndex(advance(url.startIndex, prefix.characters.count))
+                return root + url.substringFromIndex(url.startIndex.advancedBy(prefix.characters.count))
             }
         }
         return nil
