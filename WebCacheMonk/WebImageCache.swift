@@ -26,6 +26,8 @@
 
 import UIKit
 
+private let DEFAULT_COST_LIMIT = 128 * 1024 * 1024
+
 //---------------------------------------------------------------------------
 
 public class WebImageCache : WebObjectCache<UIImage> {
@@ -34,19 +36,19 @@ public class WebImageCache : WebObjectCache<UIImage> {
     public init(name: String? = nil, configuration: NSURLSessionConfiguration? = nil) {
         super.init(name: name ?? "WebImageCache", configuration: configuration, decoder: WebImageCache.decode)
         self.costEvaluator = WebImageCache.evaluate
-        self.totalCostLimit = 128 * 1024 * 1024
+        self.totalCostLimit = DEFAULT_COST_LIMIT
     }
     
     public init(path: String, configuration: NSURLSessionConfiguration? = nil) {
         super.init(path: path, configuration: configuration, decoder: WebImageCache.decode)
         self.costEvaluator = WebImageCache.evaluate
-        self.totalCostLimit = 128 * 1024 * 1024
+        self.totalCostLimit = DEFAULT_COST_LIMIT
     }
 
     public init(source: WebCacheSource) {
         super.init(source: source, decoder: WebImageCache.decode)
         self.costEvaluator = WebImageCache.evaluate
-        self.totalCostLimit = 128 * 1024 * 1024
+        self.totalCostLimit = DEFAULT_COST_LIMIT
     }
     
     private static func decode(data: NSData, completion: (UIImage?) -> Void) {

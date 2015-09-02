@@ -26,6 +26,8 @@
 
 import Foundation
 
+private let DEFAULT_SIZE_LIMIT = 128 * 1024 * 1024
+
 //---------------------------------------------------------------------------
 
 private class WebCacheDataInfo : NSObject {
@@ -44,7 +46,7 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
     private var queue: dispatch_queue_t
     private var cache: NSCache
     
-    public init(sizeLimit: Int = 128 * 1024 * 1024, countLimit: Int = 0) {
+    public init(sizeLimit: Int = DEFAULT_SIZE_LIMIT, countLimit: Int = 0) {
         self.queue = dispatch_queue_create("WebCacheMemoryStore", DISPATCH_QUEUE_SERIAL)
         self.cache = NSCache()
         self.cache.name = "WebCacheMemoryStore"
