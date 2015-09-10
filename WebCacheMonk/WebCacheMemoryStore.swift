@@ -111,7 +111,11 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
             let offset = offset ?? 0
             let length = Int64(data.length)
         
-            progress?.totalUnitCount = length
+            if progress?.indeterminate == true {
+                progress?.totalUnitCount = length
+                progress?.completedUnitCount = 0
+            }
+
             receiver.onReceiveStarted(info.meta, offset: offset, length: length)
         
             receiver.onReceiveData(data)
@@ -129,7 +133,11 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
             }
 
             let length = Int64(data.length)
-            progress?.totalUnitCount = length
+            if progress?.indeterminate == true {
+                progress?.totalUnitCount = length
+                progress?.completedUnitCount = 0
+            }
+            
             completion(data)
             progress?.completedUnitCount += length
         }

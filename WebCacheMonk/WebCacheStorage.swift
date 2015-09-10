@@ -185,7 +185,10 @@ public class WebCacheStorage : WebCacheMutableStore {
                 }
                 
                 var length = input.length
-                progress?.totalUnitCount = length
+                if progress?.indeterminate == true {
+                    progress?.totalUnitCount = length
+                    progress?.completedUnitCount = 0
+                }
                 
                 if progress?.cancelled == true {
                     receiver.onReceiveAborted(nil)

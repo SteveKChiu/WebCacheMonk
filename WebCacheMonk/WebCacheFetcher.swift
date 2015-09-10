@@ -123,7 +123,11 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
             abortTask(dataTask, error: nil)
             return
         }
-        fetcher.progress?.totalUnitCount = response.expectedContentLength
+        
+        if fetcher.progress?.indeterminate == true {
+            fetcher.progress?.totalUnitCount = response.expectedContentLength
+            fetcher.progress?.completedUnitCount = 0
+        }
 
         var offset: Int64 = 0
         var length: Int64? = response.expectedContentLength == -1 ? nil : response.expectedContentLength

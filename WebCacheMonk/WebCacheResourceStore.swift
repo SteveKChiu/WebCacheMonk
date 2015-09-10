@@ -147,7 +147,11 @@ public class WebCacheResourceStore : WebCacheStore {
             let info = WebCacheInfo(mimeType: self.getMimeType(path))
             info.totalLength = fileSize
 
-            progress?.totalUnitCount = length
+            if progress?.indeterminate == true {
+                progress?.totalUnitCount = length
+                progress?.completedUnitCount = 0
+            }
+
             receiver.onReceiveStarted(info, offset: offset, length: length)
             
             input.seekToFileOffset(UInt64(offset))
