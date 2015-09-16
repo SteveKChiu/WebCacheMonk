@@ -112,7 +112,7 @@ public extension WebCacheStorageAdapter {
             }
             
             if meta.expiration.isExpired {
-                try self.fileManager.removeItemAtPath(path)
+                _ = try? self.fileManager.removeItemAtPath(path)
                 return nil
             }
             return meta
@@ -145,11 +145,7 @@ public extension WebCacheStorageAdapter {
     }
 
     public func remove(path: String) {
-        do {
-            try self.fileManager.removeItemAtPath(path)
-        } catch {
-            NSLog("fail to remove cache file, error = %@", error as NSError)
-        }
+        _ = try? self.fileManager.removeItemAtPath(path)
     }
 }
 

@@ -165,17 +165,19 @@ public class WebCacheDataReceiver : WebCacheReceiver {
         
         var isValid = true
         if let length = length, totalLength = info.totalLength {
-            isValid = length <= self.sizeLimit && (self.acceptPartial || length == totalLength)
+            if length > self.sizeLimit {
+                isValid = false
+            } else if !self.acceptPartial && length != totalLength {
+                isValid = false
+            }
+        } else if self.sizeLimit <= 0 {
+            isValid = false
         } else if !self.acceptPartial {
             isValid = false
         }
         
         if isValid {
             self.buffer = NSMutableData()
-        } else {
-            self.buffer = nil
-            self.completion?(self)
-            self.completion = nil
         }
     }
     
@@ -183,8 +185,6 @@ public class WebCacheDataReceiver : WebCacheReceiver {
         if let buffer = self.buffer {
             if Int64(buffer.length) + Int64(data.length) > self.sizeLimit {
                 self.buffer = nil
-                self.completion?(self)
-                self.completion = nil
             } else {
                 buffer.appendData(data)
             }

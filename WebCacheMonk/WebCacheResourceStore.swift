@@ -112,18 +112,27 @@ public class WebCacheResourceStore : WebCacheStore {
     }
     
     private func getMimeType(path: String) -> String {
-        let UTI = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, (path as NSString).pathExtension, nil)!
-        let UTIMimeType = UTTypeCopyPreferredTagWithClass(UTI.takeUnretainedValue(), kUTTagClassMIMEType)
-        return (UTIMimeType?.takeUnretainedValue() ?? "application/octet-stream") as String
+        let ext = (path as NSString).pathExtension
+        let UTI = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, ext, nil)!
+        
+        if let UTIMimeType = UTTypeCopyPreferredTagWithClass(UTI.takeUnretainedValue(), kUTTagClassMIMEType) {
+            return UTIMimeType.takeUnretainedValue() as String
+        }
+        
+        return "application/octet-stream"
     }
 
     public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         dispatch_async(self.queue) {
             receiver.onReceiveInited(response: nil, progress: progress)
         
-            guard let path = self.getPath(url),
-                      fileSize = self.getFileSize(path) else {
+            guard let path = self.getPath(url) else {
                 receiver.onReceiveAborted(nil)
+                return
+            }
+            
+            guard let fileSize = self.getFileSize(path) else {
+                receiver.onReceiveAborted(WebCacheError("WebCacheMonk.InvalidResource", url: url))
                 return
             }
             
@@ -131,12 +140,12 @@ public class WebCacheResourceStore : WebCacheStore {
             var length = length ?? (fileSize - offset)
             
             guard offset + length <= fileSize else {
-                receiver.onReceiveAborted(nil)
+                receiver.onReceiveAborted(WebCacheError("WebCacheMonk.InvalidRange", url: url))
                 return
             }
             
             guard let input = NSFileHandle(forReadingAtPath: path) else {
-                receiver.onReceiveAborted(nil)
+                receiver.onReceiveAborted(WebCacheError("WebCacheMonk.InvalidResource", url: url))
                 return
             }
             

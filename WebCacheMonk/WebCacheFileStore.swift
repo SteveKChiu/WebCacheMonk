@@ -192,10 +192,10 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     public func removeAll() {
         do {
             self.groups.removeAll()
-            try self.fileManager.removeItemAtPath(self.root)
+            _ = try? self.fileManager.removeItemAtPath(self.root)
             try self.fileManager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
         } catch {
-            NSLog("fail to remove cache root, error = %@", error as NSError)
+            NSLog("fail to init cache root, error = %@", error as NSError)
         }
     }
 }

@@ -163,7 +163,7 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
                 return
             
             default:
-                let error = NSError(domain: "WebCacheFetcher", code: http.statusCode, userInfo: [
+                let error = NSError(domain: "WebCache.Fetcher", code: http.statusCode, userInfo: [
                     NSURLErrorKey: response.URL!,
                     NSLocalizedDescriptionKey: NSHTTPURLResponse.localizedStringForStatusCode(http.statusCode)
                 ])
