@@ -35,7 +35,7 @@ public class WebObjectCache<OBJECT> {
     public var dataDecoder: DataDecoder
     public var costEvaluator: CostEvaluator?
     
-    public typealias DataDecoder = (NSData, (OBJECT?) -> Void) -> Void
+    public typealias DataDecoder = (NSData, options: [String: Any]?, completion: (OBJECT?) -> Void) -> Void
     public typealias CostEvaluator = (OBJECT) -> Int
     
     public init(name: String? = nil, configuration: NSURLSessionConfiguration? = nil, decoder: DataDecoder) {
@@ -74,8 +74,12 @@ public class WebObjectCache<OBJECT> {
         }
     }
     
-    public func fetch(url: String, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, completion: (OBJECT?) -> Void) {
-        if let object = self.cache.objectForKey(url) {
+    private func getKey(url: String, tag: String?) -> String {
+        return (tag ?? "") + "@" + url
+    }
+    
+    public func fetch(url: String, tag: String? = nil, options: [String: Any]? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, completion: (OBJECT?) -> Void) {
+        if let object = self.cache.objectForKey(getKey(url, tag: tag)) {
             if let wrapper = object as? WebObjectWrapper {
                 completion(wrapper.value as? OBJECT)
             } else {
@@ -92,11 +96,11 @@ public class WebObjectCache<OBJECT> {
                 return
             }
             
-            self.dataDecoder(data) {
+            self.dataDecoder(data, options: options) {
                 object in
                 
                 if let object = object {
-                    self.store(url, object: object)
+                    self.store(url, tag: tag, object: object)
                 }
                 
                 completion(object)
@@ -106,25 +110,25 @@ public class WebObjectCache<OBJECT> {
         self.dataSource.fetch(url, offset: nil, length: nil, expired: expired, progress: progress, receiver: receiver)
     }
     
-    public func store(url: String, object: OBJECT) {
+    public func store(url: String, tag: String? = nil, object: OBJECT) {
         let cost = self.costEvaluator?(object) ?? 0
         if let object = object as? AnyObject {
-            self.cache.setObject(object, forKey: url, cost: cost)
+            self.cache.setObject(object, forKey: getKey(url, tag: tag), cost: cost)
         } else {
-            self.cache.setObject(WebObjectWrapper(object), forKey: url, cost: cost)
+            self.cache.setObject(WebObjectWrapper(object), forKey: getKey(url, tag: tag), cost: cost)
         }
     }
     
-    public func change(url: String, expired: WebCacheExpiration) {
+    public func change(url: String, tag: String? = nil, expired: WebCacheExpiration) {
         if expired.isExpired {
-            self.remove(url)
+            self.remove(url, tag: tag)
         } else if let sourceStore = self.dataSource as? WebCacheMutableStore {
             sourceStore.change(url, expired: expired)
         }
     }
     
-    public func remove(url: String) {
-        self.cache.removeObjectForKey(url)
+    public func remove(url: String, tag: String? = nil) {
+        self.cache.removeObjectForKey(getKey(url, tag: tag))
         if let sourceStore = self.dataSource as? WebCacheMutableStore {
             sourceStore.remove(url)
         }
