@@ -71,6 +71,16 @@ public extension WebCacheMutableStore {
 
 //---------------------------------------------------------------------------
 
+func WebCacheError(domain: String, url: String?) -> NSError {
+    var userInfo: [NSObject : AnyObject]?
+    if let url = url {
+        userInfo = [ NSURLErrorKey: NSURL(string: url)! ]
+    }
+    return NSError(domain: domain, code: 0, userInfo: userInfo)
+}
+
+//---------------------------------------------------------------------------
+
 public class WebCache : WebCacheMutableStore {
     private var dataStore: WebCacheStore
     private var dataSource: WebCacheSource?
@@ -124,14 +134,20 @@ public class WebCache : WebCacheMutableStore {
                 return
             }
             
-            guard let dataSource = self.dataSource,
-                      dataStore = self.dataStore as? WebCacheMutableStore,
-                      storeReceiver = dataStore.store(url, expired: expired) else {
+            guard let dataSource = self.dataSource else {
                 completion?(false)
                 return
             }
+            
+            let receiver: WebCacheReceiver
+            if let dataStore = self.dataStore as? WebCacheMutableStore,
+                   storeReceiver = dataStore.store(url, expired: expired) {
+                receiver = storeReceiver
+            } else {
+                receiver = WebCacheDataReceiver(url: url, sizeLimit: 0)
+            }
 
-            dataSource.fetch(url, offset: nil, length: nil, expired: expired, progress: progress, receiver: WebCacheFilter(storeReceiver) {
+            dataSource.fetch(url, offset: nil, length: nil, expired: expired, progress: progress, receiver: WebCacheFilter(receiver) {
                 found, error, progress in
                 
                 completion?(found)
