@@ -75,7 +75,11 @@ public class WebObjectCache<OBJECT> {
     }
     
     private func getKey(url: String, tag: String?) -> String {
-        return (tag ?? "") + "@" + url
+        if let tag = tag {
+            return "\(tag)@\(url)"
+        } else {
+            return url
+        }
     }
     
     public func fetch(url: String, tag: String? = nil, options: [String: Any]? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, completion: (OBJECT?) -> Void) {
