@@ -173,10 +173,13 @@ public extension UIImageView {
         self.fetchProgress = NSProgress(totalUnitCount: -1)
         self.image = placeholder
         
-        var options = [String: Any]()
-        options["width"] = self.bounds.width
-        options["height"] = self.bounds.height
-        options["mode"] = self.contentMode
+        var options: [String: Any]!
+        if tag != nil {
+            options = [String: Any]()
+            options["width"] = self.bounds.width
+            options["height"] = self.bounds.height
+            options["mode"] = self.contentMode
+        }
         
         WebImageCache.shared.fetch(url.absoluteString, tag: tag, options: options, progress: self.fetchProgress) {
             image in
