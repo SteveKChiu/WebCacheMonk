@@ -29,11 +29,7 @@ import UIKit
 //---------------------------------------------------------------------------
 
 public class WebCacheProtocol : NSURLProtocol {
-    public class func prepareToFetch(request: NSURLRequest) -> (NSURL, WebCacheSource)? {
-        return nil
-    }
-
-    public override final class func canInitWithRequest(request: NSURLRequest) -> Bool {
+    public override class func canInitWithRequest(request: NSURLRequest) -> Bool {
         guard NSURLProtocol.propertyForKey("WebCache", inRequest: request) == nil else {
             return false
         }
@@ -41,6 +37,15 @@ public class WebCacheProtocol : NSURLProtocol {
         return prepareToFetch(request) != nil
     }
     
+    public override class func canonicalRequestForRequest(request: NSURLRequest) -> NSURLRequest {
+        return request
+    }
+    
+    public class func prepareToFetch(request: NSURLRequest) -> (NSURL, WebCacheSource)? {
+        // subclass should override this
+        return nil
+    }
+
     private var progress: NSProgress?
     private var hasRange = false
     
@@ -50,7 +55,7 @@ public class WebCacheProtocol : NSURLProtocol {
         }
         
         guard let (url, dataSource) = self.dynamicType.prepareToFetch(self.request) else {
-            client.URLProtocol(self, didFailWithError: error("err.url"))
+            client.URLProtocol(self, didFailWithError: WebCacheError("WebCacheMonk.InvalidURL", url: self.request.URL?.absoluteString))
             return
         }
         
@@ -82,12 +87,6 @@ public class WebCacheProtocol : NSURLProtocol {
      
     public override func stopLoading() {
         self.progress?.cancel()
-    }
-
-    private func error(domain: String) -> NSError {
-        let url = self.request.URL
-        let userInfo: [NSObject : AnyObject]? = url != nil ? [NSURLErrorKey: url!] : nil
-        return NSError(domain: domain, code: 0, userInfo: userInfo)
     }
 }
 
@@ -135,7 +134,7 @@ private class WebCacheProtocolReceiver : WebCacheReceiver {
         
         if handler.hasRange {
             guard let totalLength = info.totalLength else {
-               self.onReceiveAborted(handler.error("err.length.unknown"))
+               self.onReceiveAborted(WebCacheError("WebCacheMonk.UnknownLength", url: handler.request.URL?.absoluteString))
                return
             }
             
@@ -196,7 +195,7 @@ private class WebCacheProtocolReceiver : WebCacheReceiver {
             return
         }
         
-        handler.client?.URLProtocol(handler, didFailWithError: handler.error("err.cancelled"))
+        handler.client?.URLProtocol(handler, didFailWithError: WebCacheError("WebCacheMonk.Cancalled", url: handler.request.URL?.absoluteString))
     }
 }
 
