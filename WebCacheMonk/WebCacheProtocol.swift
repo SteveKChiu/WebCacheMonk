@@ -68,17 +68,17 @@ public class WebCacheProtocol : NSURLProtocol {
         if let range = self.request.valueForHTTPHeaderField("Range") {
             self.hasRange = true
             let range = range as NSString
-            
             let rex = try! NSRegularExpression(pattern: "bytes\\s*=\\s*(\\d+)\\-(\\d*)", options: [])
-            let results = rex.matchesInString(range as String, options: [], range: NSRange(0 ..< range.length))
             
-            if results[0].range.location != NSNotFound {
-                offset = Int64(range.substringWithRange(results[0].range))!
-            }
-            
-            if results[1].range.location != NSNotFound {
-                let end = Int64(range.substringWithRange(results[1].range))!
-                length = end - (offset ?? 0) + 1
+            if let result = rex.matchesInString(range as String, options: [], range: NSRange(0 ..< range.length)).first {
+                let n = result.numberOfRanges
+                if n >= 1 {
+                    offset = Int64(range.substringWithRange(result.rangeAtIndex(1)))!
+                }
+                if n >= 2 {
+                    let end = Int64(range.substringWithRange(result.rangeAtIndex(2)))!
+                    length = end - (offset ?? 0) + 1
+                }
             }
         }
         
