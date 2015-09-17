@@ -29,6 +29,7 @@ import Foundation
 //---------------------------------------------------------------------------
 
 public class WebObjectCache<OBJECT> {
+    private var queue: dispatch_queue_t
     private let cache = NSCache()
     private let dataSource: WebCacheSource
     
@@ -39,18 +40,21 @@ public class WebObjectCache<OBJECT> {
     public typealias CostEvaluator = (OBJECT) -> Int
     
     public init(name: String? = nil, configuration: NSURLSessionConfiguration? = nil, decoder: DataDecoder) {
+        self.queue = dispatch_queue_create("WebObjectCache", DISPATCH_QUEUE_SERIAL)
         self.dataSource = WebCacheFileStore(name: name) | WebCacheFetcher(configuration: configuration)
         self.dataDecoder = decoder
         self.cache.name = name ?? "WebObjectCache"
     }
 
     public init(path: String, configuration: NSURLSessionConfiguration? = nil, decoder: DataDecoder) {
+        self.queue = dispatch_queue_create("WebObjectCache", DISPATCH_QUEUE_SERIAL)
         self.dataSource = WebCacheFileStore(path: path) | WebCacheFetcher(configuration: configuration)
         self.dataDecoder = decoder
         self.cache.name = "WebObjectCache"
     }
 
     public init(source: WebCacheSource, decoder: DataDecoder) {
+        self.queue = dispatch_queue_create("WebObjectCache", DISPATCH_QUEUE_SERIAL)
         self.dataSource = source
         self.dataDecoder = decoder
         self.cache.name = "WebObjectCache"
@@ -74,84 +78,118 @@ public class WebObjectCache<OBJECT> {
         }
     }
     
-    private func getKey(url: String, tag: String?) -> String {
-        if let tag = tag {
-            return "\(tag)@\(url)"
-        } else {
-            return url
-        }
-    }
-    
     public func fetch(url: String, tag: String? = nil, options: [String: Any]? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, completion: (OBJECT?) -> Void) {
-        if let object = self.cache.objectForKey(getKey(url, tag: tag)) {
-            if let wrapper = object as? WebObjectWrapper {
-                completion(wrapper.value as? OBJECT)
-            } else {
+        dispatch_async(self.queue) {
+            if let entry = self.cache.objectForKey(url) as? WebObjectEntry {
+                let object = entry.get(tag)
                 completion(object as? OBJECT)
-            }
-            return
-        }
-    
-        let receiver = WebCacheDataReceiver(url: url) {
-            receiver in
-            
-            guard let data = receiver.buffer else {
-                completion(nil)
                 return
             }
-            
-            self.dataDecoder(data, options: options) {
-                object in
+        
+            let receiver = WebCacheDataReceiver(url: url) {
+                receiver in
                 
-                if let object = object {
-                    self.store(url, tag: tag, object: object)
+                guard let data = receiver.buffer else {
+                    completion(nil)
+                    return
                 }
                 
-                completion(object)
+                self.dataDecoder(data, options: options) {
+                    object in
+                    
+                    if let object = object {
+                        self.store(url, tag: tag, object: object)
+                    }
+                    
+                    completion(object)
+                }
             }
+            
+            self.dataSource.fetch(url, offset: nil, length: nil, expired: expired, progress: progress, receiver: receiver)
         }
-        
-        self.dataSource.fetch(url, offset: nil, length: nil, expired: expired, progress: progress, receiver: receiver)
     }
     
     public func store(url: String, tag: String? = nil, object: OBJECT) {
-        let cost = self.costEvaluator?(object) ?? 0
-        if let object = object as? AnyObject {
-            self.cache.setObject(object, forKey: getKey(url, tag: tag), cost: cost)
-        } else {
-            self.cache.setObject(WebObjectWrapper(object), forKey: getKey(url, tag: tag), cost: cost)
+        dispatch_async(self.queue) {
+            let cost = self.costEvaluator?(object) ?? 0
+            if let entry = self.cache.objectForKey(url) as? WebObjectEntry {
+                entry.set(tag, value: object, cost: cost)
+                self.cache.setObject(entry, forKey: url, cost: entry.cost)
+            } else {
+                let entry = WebObjectEntry(tag: tag, value: object, cost: cost)
+                self.cache.setObject(entry, forKey: url, cost: entry.cost)
+            }
         }
     }
     
-    public func change(url: String, tag: String? = nil, expired: WebCacheExpiration) {
-        if expired.isExpired {
-            self.remove(url, tag: tag)
-        } else if let sourceStore = self.dataSource as? WebCacheMutableStore {
-            sourceStore.change(url, expired: expired)
+    public func change(url: String, expired: WebCacheExpiration) {
+        dispatch_async(self.queue) {
+            if expired.isExpired {
+                self.remove(url)
+            } else if let sourceStore = self.dataSource as? WebCacheMutableStore {
+                sourceStore.change(url, expired: expired)
+            }
         }
     }
     
-    public func remove(url: String, tag: String? = nil) {
-        self.cache.removeObjectForKey(getKey(url, tag: tag))
-        if let sourceStore = self.dataSource as? WebCacheMutableStore {
-            sourceStore.remove(url)
+    public func remove(url: String, tag: String) {
+        dispatch_async(self.queue) {
+            if let entry = self.cache.objectForKey(url) as? WebObjectEntry {
+                entry.remove(tag)
+                self.cache.setObject(entry, forKey: url, cost: entry.cost)
+            }
+        }
+    }
+
+    public func remove(url: String) {
+        dispatch_async(self.queue) {
+            self.cache.removeObjectForKey(url)
+            if let sourceStore = self.dataSource as? WebCacheMutableStore {
+                sourceStore.remove(url)
+            }
         }
     }
     
     public func removeAll() {
-        self.cache.removeAllObjects()
-        if let sourceStore = self.dataSource as? WebCacheMutableStore {
-            sourceStore.removeAll()
+        dispatch_async(self.queue) {
+            self.cache.removeAllObjects()
+            if let sourceStore = self.dataSource as? WebCacheMutableStore {
+                sourceStore.removeAll()
+            }
         }
     }
 }
 
 //---------------------------------------------------------------------------
 
-private class WebObjectWrapper : NSObject {
-    var value: Any
+private class WebObjectEntry : NSObject {
+    var tags: [String: (object: Any, cost: Int)]
+    var cost: Int
     
-    init(_ value: Any) {
-        self.value = value
+    init(tag: String?, value: Any, cost: Int) {
+        self.tags = [ (tag ?? ""): (value, cost) ]
+        self.cost = cost
+    }
+    
+    func get(tag: String?) -> Any? {
+        if let r = self.tags[tag ?? ""] {
+            return r.object
+        }
+        return nil
+    }
+
+    func set(tag: String?, value: Any, cost: Int) {
+        let tag = tag ?? ""
+        if let r = self.tags[tag] {
+            self.cost -= r.cost
+        }
+        self.tags[tag] = (value, cost)
+        self.cost += cost
+    }
+    
+    func remove(tag: String) {
+        if let r = self.tags.removeValueForKey(tag) {
+            self.cost -= r.cost
+        }
     }
 }

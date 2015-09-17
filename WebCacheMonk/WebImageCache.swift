@@ -175,13 +175,19 @@ public extension UIImageView {
         
         var options: [String: Any]!
         if tag != nil {
-            options = [String: Any]()
-            options["width"] = self.bounds.width
-            options["height"] = self.bounds.height
-            options["mode"] = self.contentMode
+            switch self.contentMode {
+            case .ScaleToFill, .ScaleAspectFill, .ScaleAspectFit:
+                options = [String: Any]()
+                options["width"] = self.bounds.width
+                options["height"] = self.bounds.height
+                options["mode"] = self.contentMode
+                
+            default:
+                break
+            }
         }
         
-        WebImageCache.shared.fetch(url.absoluteString, tag: tag, options: options, progress: self.fetchProgress) {
+        WebImageCache.shared.fetch(url.absoluteString, tag: options != nil ? tag : nil, options: options, progress: self.fetchProgress) {
             image in
 
             dispatch_async(dispatch_get_main_queue()) {
