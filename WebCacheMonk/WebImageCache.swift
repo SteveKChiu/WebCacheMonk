@@ -173,14 +173,15 @@ public extension UIImageView {
         self.fetchProgress = NSProgress(totalUnitCount: -1)
         self.image = placeholder
         
-        var options: [String: Any]!
+        var options: [String: Any]?
         if tag != nil {
             switch self.contentMode {
             case .ScaleToFill, .ScaleAspectFill, .ScaleAspectFit:
-                options = [String: Any]()
-                options["width"] = self.bounds.width
-                options["height"] = self.bounds.height
-                options["mode"] = self.contentMode
+                options = [
+                    "width": self.bounds.width,
+                    "height": self.bounds.height,
+                    "mode": self.contentMode,
+                ]
                 
             default:
                 break
