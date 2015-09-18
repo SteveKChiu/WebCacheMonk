@@ -33,30 +33,30 @@ public class WebObjectCache<OBJECT> {
     private let cache = NSCache()
     private let dataSource: WebCacheSource
     
-    public var dataDecoder: DataDecoder
-    public var costEvaluator: CostEvaluator?
+    public var decoder: ObjectDecoder?
+    public var evaluator: ObjectEvaluator?
     
-    public typealias DataDecoder = (NSData, options: [String: Any]?, completion: (OBJECT?) -> Void) -> Void
-    public typealias CostEvaluator = (OBJECT) -> Int
+    public typealias ObjectDecoder = (NSData, options: [String: Any]?, completion: (OBJECT?) -> Void) -> Void
+    public typealias ObjectEvaluator = (OBJECT) -> Int
     
-    public init(name: String? = nil, configuration: NSURLSessionConfiguration? = nil, decoder: DataDecoder) {
+    public init(name: String? = nil, configuration: NSURLSessionConfiguration? = nil, decoder: ObjectDecoder?) {
         self.queue = dispatch_queue_create("WebObjectCache", DISPATCH_QUEUE_SERIAL)
         self.dataSource = WebCacheFileStore(name: name) | WebCacheFetcher(configuration: configuration)
-        self.dataDecoder = decoder
+        self.decoder = decoder
         self.cache.name = name ?? "WebObjectCache"
     }
 
-    public init(path: String, configuration: NSURLSessionConfiguration? = nil, decoder: DataDecoder) {
+    public init(path: String, configuration: NSURLSessionConfiguration? = nil, decoder: ObjectDecoder?) {
         self.queue = dispatch_queue_create("WebObjectCache", DISPATCH_QUEUE_SERIAL)
         self.dataSource = WebCacheFileStore(path: path) | WebCacheFetcher(configuration: configuration)
-        self.dataDecoder = decoder
+        self.decoder = decoder
         self.cache.name = "WebObjectCache"
     }
 
-    public init(source: WebCacheSource, decoder: DataDecoder) {
+    public init(source: WebCacheSource, decoder: ObjectDecoder?) {
         self.queue = dispatch_queue_create("WebObjectCache", DISPATCH_QUEUE_SERIAL)
         self.dataSource = source
-        self.dataDecoder = decoder
+        self.decoder = decoder
         self.cache.name = "WebObjectCache"
     }
 
@@ -78,6 +78,18 @@ public class WebObjectCache<OBJECT> {
         }
     }
     
+    public func decode(data: NSData, options: [String: Any]?, completion: (OBJECT?) -> Void) {
+        if let decoder = self.decoder {
+            decoder(data, options: options, completion: completion)
+        } else {
+            completion(nil)
+        }
+    }
+    
+    public func evaluate(object: OBJECT) -> Int {
+        return self.evaluator?(object) ?? 0
+    }
+    
     public func fetch(url: String, tag: String? = nil, options: [String: Any]? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, completion: (OBJECT?) -> Void) {
         dispatch_async(self.queue) {
             if let entry = self.cache.objectForKey(url) as? WebObjectEntry {
@@ -94,7 +106,7 @@ public class WebObjectCache<OBJECT> {
                     return
                 }
                 
-                self.dataDecoder(data, options: options) {
+                self.decode(data, options: options) {
                     object in
                     
                     if let object = object {
@@ -111,7 +123,7 @@ public class WebObjectCache<OBJECT> {
     
     public func store(url: String, tag: String? = nil, object: OBJECT) {
         dispatch_async(self.queue) {
-            let cost = self.costEvaluator?(object) ?? 0
+            let cost = self.evaluate(object)
             if let entry = self.cache.objectForKey(url) as? WebObjectEntry {
                 entry.set(tag, value: object, cost: cost)
                 self.cache.setObject(entry, forKey: url, cost: entry.cost)

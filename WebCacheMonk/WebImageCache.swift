@@ -26,34 +26,43 @@
 
 import UIKit
 
-private let DEFAULT_COST_LIMIT = 128 * 1024 * 1024
+private let DefaultCostLimit = 128 * 1024 * 1024
 
 //---------------------------------------------------------------------------
 
 public class WebImageCache : WebObjectCache<UIImage> {
     public static var shared = WebImageCache()
 
+    public var decompressedCostLimit: Int = 512 * 512 * 4
+
     public init(name: String? = nil, configuration: NSURLSessionConfiguration? = nil) {
-        super.init(name: name ?? "WebImageCache", configuration: configuration, decoder: WebImageCache.decode)
-        self.costEvaluator = WebImageCache.evaluate
-        self.totalCostLimit = DEFAULT_COST_LIMIT
+        super.init(name: name ?? "WebImageCache", configuration: configuration, decoder: nil)
+        self.totalCostLimit = DefaultCostLimit
     }
     
     public init(path: String, configuration: NSURLSessionConfiguration? = nil) {
-        super.init(path: path, configuration: configuration, decoder: WebImageCache.decode)
-        self.costEvaluator = WebImageCache.evaluate
-        self.totalCostLimit = DEFAULT_COST_LIMIT
+        super.init(path: path, configuration: configuration, decoder: nil)
+        self.totalCostLimit = DefaultCostLimit
     }
 
     public init(source: WebCacheSource) {
-        super.init(source: source, decoder: WebImageCache.decode)
-        self.costEvaluator = WebImageCache.evaluate
-        self.totalCostLimit = DEFAULT_COST_LIMIT
+        super.init(source: source, decoder: nil)
+        self.totalCostLimit = DefaultCostLimit
     }
     
-    private static func decode(data: NSData, options: [String: Any]?, completion: (UIImage?) -> Void) {
+    public override func decode(data: NSData, options: [String: Any]?, completion: (UIImage?) -> Void) {
+        if let decoder = self.decoder {
+            decoder(data, options: options, completion: completion)
+            return
+        }
+    
         guard let image = UIImage(data: data) else {
             completion(nil)
+            return
+        }
+        
+        if evaluate(image) > self.decompressedCostLimit {
+            completion(image)
             return
         }
         
@@ -79,17 +88,21 @@ public class WebImageCache : WebObjectCache<UIImage> {
                 }
             }
 
-            let image = decompressedImage(image, scale: scale)
+            let image = self.decompress(image, scale: scale)
             completion(image)
         }
     }
 
-    private static func evaluate(image: UIImage) -> Int {
+    public override func evaluate(image: UIImage) -> Int {
+        if let evaluator = self.evaluator {
+            return evaluator(image)
+        }
+    
         let size = image.size
         return Int(size.width * size.height * 4)
     }
 
-    private static func decompressedImage(image: UIImage, scale: CGFloat) -> UIImage? {
+    private func decompress(image: UIImage, scale: CGFloat) -> UIImage? {
         let imageRef = image.CGImage
         var bitmapInfo = CGImageGetBitmapInfo(imageRef).rawValue
         let alphaInfo = CGImageGetAlphaInfo(imageRef)
@@ -134,9 +147,10 @@ public class WebImageCache : WebObjectCache<UIImage> {
 
 private var UIImageView_imageURL = 0
 private var UIImageView_fetchProgress = 0
+private var UIImageView_fetchCompleted = 0
 
 public extension UIImageView {
-    public var fetchProgress: NSProgress? {
+    public private(set) var fetchProgress: NSProgress? {
         get {
             return objc_getAssociatedObject(self, &UIImageView_fetchProgress) as? NSProgress
         }
@@ -145,6 +159,16 @@ public extension UIImageView {
         }
     }
 
+    public private(set) var fetchCompleted: Bool {
+        get {
+            let v = objc_getAssociatedObject(self, &UIImageView_fetchCompleted) as? NSNumber
+            return v?.boolValue ?? false
+        }
+        set {
+            objc_setAssociatedObject(self, &UIImageView_fetchCompleted, NSNumber(bool: newValue), .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+    
     public var imageURL: NSURL? {
         get {
             return objc_getAssociatedObject(self, &UIImageView_imageURL) as? NSURL
@@ -155,22 +179,24 @@ public extension UIImageView {
     }
 
     public func setImageWithURL(url: NSURL?, placeholder: UIImage? = nil, tag: String? = nil, animated: Bool, completion: (() -> Void)? = nil) {
-        if url == self.imageURL && (completion == nil || self.fetchProgress == nil) {
+        if url == self.imageURL && self.fetchCompleted {
             completion?()
             return
         }
     
         self.fetchProgress?.cancel()
+        self.fetchProgress = nil
         objc_setAssociatedObject(self, &UIImageView_imageURL, url, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
         guard let url = url else {
-            self.fetchProgress = nil
             self.image = placeholder
+            self.fetchCompleted = true
             completion?()
             return
         }
         
         self.fetchProgress = NSProgress(totalUnitCount: -1)
+        self.fetchCompleted = false
         self.image = placeholder
         
         var options: [String: Any]?
@@ -192,15 +218,25 @@ public extension UIImageView {
             image in
 
             dispatch_async(dispatch_get_main_queue()) {
+                guard let image = image else {
+                    completion?()
+                    return
+                }
+                
                 self.fetchProgress = nil
+                self.fetchCompleted = true
+
                 if animated {
                     UIView.transitionWithView(self, duration: 0.15, options: .TransitionCrossDissolve, animations: {
                         self.image = image
-                    }, completion: nil)
+                    }, completion: {
+                        _ in
+                        completion?()
+                    })
                 } else {
                     self.image = image
+                    completion?()
                 }
-                completion?()
             }
         }
     }
