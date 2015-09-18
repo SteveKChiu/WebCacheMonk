@@ -186,10 +186,11 @@ public extension UIImageView {
     
         self.fetchProgress?.cancel()
         self.fetchProgress = nil
+        self.image = placeholder
+        
         objc_setAssociatedObject(self, &UIImageView_imageURL, url, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
         guard let url = url else {
-            self.image = placeholder
             self.fetchCompleted = true
             completion?()
             return
@@ -197,8 +198,8 @@ public extension UIImageView {
         
         self.fetchProgress = NSProgress(totalUnitCount: -1)
         self.fetchCompleted = false
-        self.image = placeholder
         
+        var tag = tag
         var options: [String: Any]?
         if tag != nil {
             switch self.contentMode {
@@ -210,11 +211,12 @@ public extension UIImageView {
                 ]
                 
             default:
+                tag = nil
                 break
             }
         }
         
-        WebImageCache.shared.fetch(url.absoluteString, tag: options != nil ? tag : nil, options: options, progress: self.fetchProgress) {
+        WebImageCache.shared.fetch(url.absoluteString, tag: tag, options: options, progress: self.fetchProgress) {
             image in
 
             dispatch_async(dispatch_get_main_queue()) {
@@ -227,7 +229,7 @@ public extension UIImageView {
                 self.fetchCompleted = true
 
                 if animated {
-                    UIView.transitionWithView(self, duration: 0.15, options: .TransitionCrossDissolve, animations: {
+                    UIView.transitionWithView(self, duration: 0.5, options: .TransitionCrossDissolve, animations: {
                         self.image = image
                     }, completion: {
                         _ in
