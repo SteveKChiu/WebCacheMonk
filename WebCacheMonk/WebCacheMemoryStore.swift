@@ -111,9 +111,8 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
             let offset = offset ?? 0
             let length = Int64(data.length)
         
-            if progress?.indeterminate == true {
+            if progress?.totalUnitCount < 0 {
                 progress?.totalUnitCount = length
-                progress?.completedUnitCount = 0
             }
 
             receiver.onReceiveStarted(info.meta, offset: offset, length: length)
@@ -133,9 +132,8 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
             }
 
             let length = Int64(data.length)
-            if progress?.indeterminate == true {
+            if progress?.totalUnitCount < 0 {
                 progress?.totalUnitCount = length
-                progress?.completedUnitCount = 0
             }
             
             completion(data)
@@ -143,22 +141,27 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
         }
     }
 
-    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Bool) -> Void) {
+    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Int64?) -> Void) {
         dispatch_async(self.queue) {
             guard let info = self.cache.objectForKey(url) as? WebCacheDataInfo else {
-                completion(false)
+                completion(nil)
                 return
             }
         
             if info.meta.expiration.isExpired {
                 self.cache.removeObjectForKey(url)
-                completion(false)
+                completion(nil)
                 return
             }
 
+            let totalLength = Int64(info.data.length)
             let offset = offset ?? 0
-            let length = length ?? (Int64(info.data.length) - offset)
-            completion(offset + length <= Int64(info.data.length))
+            let length = length ?? (totalLength - offset)
+            if offset + length <= totalLength {
+                completion(totalLength)
+            } else {
+                completion(nil)
+            }
         }
     }
     

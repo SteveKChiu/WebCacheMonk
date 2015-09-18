@@ -181,9 +181,8 @@ public class WebCacheStorage : WebCacheMutableStore {
                 }
                 
                 var length = input.length
-                if progress?.indeterminate == true {
+                if progress?.totalUnitCount < 0 {
                     progress?.totalUnitCount = length
-                    progress?.completedUnitCount = 0
                 }
                 
                 if progress?.cancelled == true {
@@ -216,18 +215,22 @@ public class WebCacheStorage : WebCacheMutableStore {
         }
     }
 
-    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Bool) -> Void) {
+    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Int64?) -> Void) {
         perform() {
             let (path, _) = self.adapter.getPath(url)
             guard let fileSize = self.adapter.getSize(path)
                     where self.adapter.getMeta(path) != nil else {
-                completion(false)
+                completion(nil)
                 return
             }
             
             let start = offset ?? 0
             let length = length ?? (fileSize - start)
-            completion(start <= fileSize && length <= fileSize)
+            if start <= fileSize && length <= fileSize {
+                completion(fileSize)
+            } else {
+                completion(nil)
+            }
         }
     }
     

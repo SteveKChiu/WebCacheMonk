@@ -124,9 +124,8 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
             return
         }
         
-        if fetcher.progress?.indeterminate == true {
+        if fetcher.progress?.totalUnitCount < 0 {
             fetcher.progress?.totalUnitCount = response.expectedContentLength
-            fetcher.progress?.completedUnitCount = 0
         }
 
         var offset: Int64 = 0

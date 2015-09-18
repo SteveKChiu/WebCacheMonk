@@ -45,7 +45,7 @@ public extension WebCacheSource {
 //---------------------------------------------------------------------------
 
 public protocol WebCacheStore : WebCacheSource {
-    func check(url: String, offset: Int64?, length: Int64?, completion: (Bool) -> Void)
+    func check(url: String, offset: Int64?, length: Int64?, completion: (Int64?) -> Void)
 }
 
 //---------------------------------------------------------------------------
@@ -127,9 +127,13 @@ public class WebCache : WebCacheMutableStore {
 
     public func prefetch(url: String, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, completion: ((Bool) -> Void)? = nil) {
         self.check(url) {
-            found in
+            totalLength in
             
-            if found {
+            if let totalLength = totalLength {
+                if progress?.totalUnitCount < 0 {
+                    progress?.totalUnitCount = totalLength
+                }
+                progress?.completedUnitCount += totalLength
                 completion?(true)
                 return
             }
@@ -156,16 +160,16 @@ public class WebCache : WebCacheMutableStore {
         }
     }
 
-    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Bool) -> Void) {
+    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Int64?) -> Void) {
         self.dataStore.check(url, offset: offset, length: length) {
-            found in
+            totalLength in
             
-            if found {
-                completion(true)
+            if let totalLength = totalLength {
+                completion(totalLength)
             } else if let sourceStore = self.dataSource as? WebCacheStore {
                 sourceStore.check(url, offset: offset, length: length, completion: completion)
             } else {
-                completion(false)
+                completion(nil)
             }
         }
     }

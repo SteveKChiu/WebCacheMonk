@@ -156,9 +156,8 @@ public class WebCacheResourceStore : WebCacheStore {
             let info = WebCacheInfo(mimeType: self.getMimeType(path))
             info.totalLength = fileSize
 
-            if progress?.indeterminate == true {
+            if progress?.totalUnitCount < 0 {
                 progress?.totalUnitCount = length
-                progress?.completedUnitCount = 0
             }
 
             receiver.onReceiveStarted(info, offset: offset, length: length)
@@ -176,17 +175,21 @@ public class WebCacheResourceStore : WebCacheStore {
         }
     }
 
-    public func check(url: String, offset: Int64?, length: Int64?, completion: (Bool) -> Void) {
+    public func check(url: String, offset: Int64?, length: Int64?, completion: (Int64?) -> Void) {
         dispatch_async(self.queue) {
             guard let path = self.getPath(url),
                       fileSize = self.getFileSize(path) else {
-                completion(false)
+                completion(nil)
                 return
             }
             
             let offset = offset ?? 0
             let length = length ?? (fileSize - offset)
-            completion(offset + length <= fileSize)
+            if offset + length <= fileSize {
+                completion(fileSize)
+            } else {
+                completion(nil)
+            }
         }
     }
 }
