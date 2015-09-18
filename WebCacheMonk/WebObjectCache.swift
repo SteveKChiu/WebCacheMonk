@@ -93,9 +93,10 @@ public class WebObjectCache<OBJECT> {
     public func fetch(url: String, tag: String? = nil, options: [String: Any]? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, completion: (OBJECT?) -> Void) {
         dispatch_async(self.queue) {
             if let entry = self.cache.objectForKey(url) as? WebObjectEntry {
-                let object = entry.get(tag)
-                completion(object as? OBJECT)
-                return
+                if let object = entry.get(tag) as? OBJECT {
+                    completion(object)
+                    return
+                }
             }
         
             let receiver = WebCacheDataReceiver(url: url) {
@@ -125,10 +126,10 @@ public class WebObjectCache<OBJECT> {
         dispatch_async(self.queue) {
             let cost = self.evaluate(object)
             if let entry = self.cache.objectForKey(url) as? WebObjectEntry {
-                entry.set(tag, value: object, cost: cost)
+                entry.set(tag, object: object, cost: cost)
                 self.cache.setObject(entry, forKey: url, cost: entry.cost)
             } else {
-                let entry = WebObjectEntry(tag: tag, value: object, cost: cost)
+                let entry = WebObjectEntry(tag: tag, object: object, cost: cost)
                 self.cache.setObject(entry, forKey: url, cost: entry.cost)
             }
         }
@@ -178,8 +179,8 @@ private class WebObjectEntry : NSObject {
     var tags: [String: (object: Any, cost: Int)]
     var cost: Int
     
-    init(tag: String?, value: Any, cost: Int) {
-        self.tags = [ (tag ?? ""): (value, cost) ]
+    init(tag: String?, object: Any, cost: Int) {
+        self.tags = [ (tag ?? ""): (object, cost) ]
         self.cost = cost
     }
     
@@ -190,12 +191,12 @@ private class WebObjectEntry : NSObject {
         return nil
     }
 
-    func set(tag: String?, value: Any, cost: Int) {
+    func set(tag: String?, object: Any, cost: Int) {
         let tag = tag ?? ""
         if let r = self.tags[tag] {
             self.cost -= r.cost
         }
-        self.tags[tag] = (value, cost)
+        self.tags[tag] = (object, cost)
         self.cost += cost
     }
     
