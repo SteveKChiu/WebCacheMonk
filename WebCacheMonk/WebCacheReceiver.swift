@@ -199,8 +199,8 @@ public class WebCacheDataReceiver : WebCacheReceiver {
     
     public func onReceiveAborted(error: NSError?) {
         self.error = error
+        self.buffer = nil
         self.completion?(self)
         self.completion = nil
-        self.buffer = nil
     }
 }
