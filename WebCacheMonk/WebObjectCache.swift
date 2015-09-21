@@ -111,7 +111,7 @@ public class WebObjectCache<OBJECT> {
                     object in
                     
                     if let object = object {
-                        self.store(url, tag: tag, object: object)
+                        self.set(url, tag: tag, object: object)
                     }
                     
                     completion(object)
@@ -122,7 +122,17 @@ public class WebObjectCache<OBJECT> {
         }
     }
     
-    public func store(url: String, tag: String? = nil, object: OBJECT) {
+    public func get(url: String, tag: String? = nil) -> OBJECT? {
+        var object: OBJECT?
+        dispatch_sync(self.queue) {
+            if let entry = self.cache.objectForKey(url) as? WebObjectEntry {
+                object = entry.get(tag) as? OBJECT
+            }
+        }
+        return object
+    }
+    
+    public func set(url: String, tag: String? = nil, object: OBJECT) {
         dispatch_async(self.queue) {
             let cost = self.evaluate(object)
             if let entry = self.cache.objectForKey(url) as? WebObjectEntry {
