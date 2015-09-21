@@ -186,11 +186,18 @@ public extension UIImageView {
     
         self.fetchProgress?.cancel()
         self.fetchProgress = nil
-        self.image = placeholder
         
         objc_setAssociatedObject(self, &UIImageView_imageURL, url, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
         guard let url = url else {
+            self.image = placeholder
+            self.fetchCompleted = true
+            completion?()
+            return
+        }
+        
+        if let image = WebImageCache.shared.get(url.absoluteString, tag: tag) {
+            self.image = image
             self.fetchCompleted = true
             completion?()
             return
@@ -198,7 +205,8 @@ public extension UIImageView {
         
         self.fetchProgress = NSProgress(totalUnitCount: -1)
         self.fetchCompleted = false
-        
+        self.image = placeholder
+
         var tag = tag
         var options: [String: Any]?
         if tag != nil {
