@@ -81,7 +81,10 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
             self.root = root.hasSuffix("/") ? root : root + "/"
             try self.fileManager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
         } catch {
-            NSLog("fail to create cache directory, error = %@", error as NSError)
+            let error = error as NSError
+            if error.domain == NSCocoaErrorDomain && error.code != 516 {
+                NSLog("fail to create cache directory, error = %@", error)
+            }
         }
     }
 
@@ -108,7 +111,10 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         do {
             try self.fileManager.createDirectoryAtPath(root, withIntermediateDirectories: true, attributes: nil)
         } catch {
-            NSLog("fail to create cache group %@, error = %@", url, error as NSError)
+            let error = error as NSError
+            if error.domain == NSCocoaErrorDomain && error.code != 516 {
+                NSLog("fail to create cache group %@, error = %@", url, error)
+            }
         }
     }
     
@@ -195,7 +201,10 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
             _ = try? self.fileManager.removeItemAtPath(self.root)
             try self.fileManager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
         } catch {
-            NSLog("fail to init cache root, error = %@", error as NSError)
+            let error = error as NSError
+            if error.domain == NSCocoaErrorDomain && error.code != 516 {
+                NSLog("fail to init cache root, error = %@", error)
+            }
         }
     }
 }
