@@ -78,15 +78,11 @@ public class WebCacheFilter : WebCacheReceiver {
     private var filter: WebCacheReceiver?
     private var progress: NSProgress?
     private var completion: ((Bool, NSError?, NSProgress?) -> Bool)?
-    
-    public init(_ receiver: WebCacheReceiver, completion: (Bool, NSError?, NSProgress?) -> Bool) {
-        self.receiver = receiver
-        self.completion = completion
-    }
-    
-    public init(_ receiver: WebCacheReceiver, filter: WebCacheReceiver) {
+        
+    public init(_ receiver: WebCacheReceiver, filter: WebCacheReceiver? = nil, completion: ((Bool, NSError?, NSProgress?) -> Bool)? = nil) {
         self.receiver = receiver
         self.filter = filter
+        self.completion = completion
     }
     
     public func onReceiveInited(response response: NSURLResponse?, progress: NSProgress?) {
