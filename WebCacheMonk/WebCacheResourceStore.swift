@@ -66,17 +66,25 @@ public class WebCacheResourceStore : WebCacheStore {
         }
     }
     
+    public func addMapping(url: String, imageNamed: String) {
+        addMapping(url, entry: "asset://" + imageNamed)
+    }
+
     public func addMapping(url: String, path: String) {
         var isDir: ObjCBool = false
         if NSFileManager.defaultManager().fileExistsAtPath(path, isDirectory: &isDir) {
             let path = !isDir || path.hasSuffix("/") ? path : path + "/"
-            dispatch_async(self.queue) {
-                let mapping = (url: url, path: path)
-                if let index = self.mappings.indexOf({ $0.url == url }) {
-                    self.mappings[index] = mapping
-                } else {
-                    self.mappings.append(mapping)
-                }
+            addMapping(url, entry: path)
+        }
+    }
+    
+    private func addMapping(url: String, entry: String) {
+        dispatch_async(self.queue) {
+            let mapping = (url: url, path: entry)
+            if let index = self.mappings.indexOf({ $0.url == url }) {
+                self.mappings[index] = mapping
+            } else {
+                self.mappings.append(mapping)
             }
         }
     }
@@ -98,16 +106,42 @@ public class WebCacheResourceStore : WebCacheStore {
         return nil
     }
     
-    private func getFileSize(path: String) -> Int64? {
-        do {
-            let attributes = try NSFileManager.defaultManager().attributesOfItemAtPath(path)
-            if attributes[NSFileType] as? String == NSFileTypeDirectory {
-                return nil
-            } else {
-                return (attributes[NSFileSize] as? NSNumber)?.longLongValue
-            }
-        } catch {
+    private func getAssetData(path: String) -> NSData? {
+        if !path.hasPrefix("asset://") {
             return nil
+        }
+        
+        let path = path.substringFromIndex(path.startIndex.advancedBy(8))
+        guard let r = path.rangeOfString(".", options: .BackwardsSearch) else {
+            return nil
+        }
+        
+        let name = path.substringToIndex(r.startIndex)
+        guard let image = UIImage(named: name) else {
+            return nil
+        }
+        
+        let ext = path.substringFromIndex(r.endIndex.advancedBy(1))
+        switch ext {
+        case "jpg", "jpeg":
+            return UIImageJPEGRepresentation(image, 1.0)
+        
+        case "png":
+            return UIImagePNGRepresentation(image)
+        
+        default:
+            return nil
+        }
+    }
+    
+    private func getFileSize(path: String) -> Int64? {
+        guard let attributes = try? NSFileManager.defaultManager().attributesOfItemAtPath(path) else {
+            return nil
+        }
+        if attributes[NSFileType] as? String == NSFileTypeDirectory {
+            return nil
+        } else {
+            return (attributes[NSFileSize] as? NSNumber)?.longLongValue
         }
     }
     
@@ -131,62 +165,105 @@ public class WebCacheResourceStore : WebCacheStore {
                 return
             }
             
-            guard let fileSize = self.getFileSize(path) else {
+            var assetData: NSData?
+            let totalLength: Int64
+            if let data = self.getAssetData(path) {
+                assetData = data
+                totalLength = Int64(data.length)
+            } else if let fileSize = self.getFileSize(path) {
+                totalLength = fileSize
+            } else {
                 receiver.onReceiveAborted(WebCacheError("WebCacheMonk.InvalidResource", url: url))
                 return
             }
             
             let offset = offset ?? 0
-            var length = length ?? (fileSize - offset)
+            var length = length ?? (totalLength - offset)
             
-            guard offset + length <= fileSize else {
+            guard offset + length <= totalLength else {
                 receiver.onReceiveAborted(WebCacheError("WebCacheMonk.InvalidRange", url: url))
                 return
             }
             
-            guard let input = NSFileHandle(forReadingAtPath: path) else {
-                receiver.onReceiveAborted(WebCacheError("WebCacheMonk.InvalidResource", url: url))
-                return
-            }
-            
-            defer {
-                input.closeFile()
-            }
-            
             let info = WebCacheInfo(mimeType: self.getMimeType(path))
-            info.totalLength = fileSize
-
-            if progress?.totalUnitCount < 0 {
-                progress?.totalUnitCount = length
-            }
-
-            receiver.onReceiveStarted(info, offset: offset, length: length)
+            info.totalLength = totalLength
             
-            input.seekToFileOffset(UInt64(offset))
-            while length > 0 {
-                let size = min(65536, length)
-                let data = input.readDataOfLength(Int(size))
-                receiver.onReceiveData(data)
-                progress?.completedUnitCount += size
-                length -= size
-            }
+            if let assetData = assetData {
+                self.transferData(info, data: assetData, offset: offset, length: length, progress: progress, receiver: receiver)
+            } else {
+                guard let input = NSFileHandle(forReadingAtPath: path) else {
+                    receiver.onReceiveAborted(WebCacheError("WebCacheMonk.InvalidResource", url: url))
+                    return
+                }
             
-            receiver.onReceiveFinished()
+                defer {
+                    input.closeFile()
+                }
+
+                self.transferFile(info, file: input, offset: offset, length: length, progress: progress, receiver: receiver)
+            }
         }
+    }
+
+    private func transferData(info: WebCacheInfo, data: NSData, offset: Int64, length: Int64, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+        if progress?.totalUnitCount < 0 {
+            progress?.totalUnitCount = length
+        }
+            
+        receiver.onReceiveStarted(info, offset: offset, length: length)
+        
+        if length < info.totalLength {
+            let data = data.subdataWithRange(NSRange(Int(offset) ..< Int(offset + length)))
+            receiver.onReceiveData(data)
+        } else {
+            receiver.onReceiveData(data)
+        }
+        
+        progress?.completedUnitCount += length
+        receiver.onReceiveFinished()
+    }
+
+    private func transferFile(info: WebCacheInfo, file: NSFileHandle, offset: Int64, length: Int64, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+        if progress?.totalUnitCount < 0 {
+            progress?.totalUnitCount = length
+        }
+            
+        receiver.onReceiveStarted(info, offset: offset, length: length)
+        file.seekToFileOffset(UInt64(offset))
+        
+        var length = length
+        while length > 0 {
+            let size = min(65536, length)
+            let data = file.readDataOfLength(Int(size))
+            receiver.onReceiveData(data)
+            progress?.completedUnitCount += size
+            length -= size
+        }
+
+        receiver.onReceiveFinished()
     }
 
     public func check(url: String, offset: Int64?, length: Int64?, completion: (Int64?) -> Void) {
         dispatch_async(self.queue) {
-            guard let path = self.getPath(url),
-                      fileSize = self.getFileSize(path) else {
+            guard let path = self.getPath(url) else {
+                completion(nil)
+                return
+            }
+            
+            let totalLength: Int64
+            if let data = self.getAssetData(path) {
+                totalLength = Int64(data.length)
+            } else if let fileSize = self.getFileSize(path) {
+                totalLength = fileSize
+            } else {
                 completion(nil)
                 return
             }
             
             let offset = offset ?? 0
-            let length = length ?? (fileSize - offset)
-            if offset + length <= fileSize {
-                completion(fileSize)
+            let length = length ?? (totalLength - offset)
+            if offset + length <= totalLength {
+                completion(totalLength)
             } else {
                 completion(nil)
             }
