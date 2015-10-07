@@ -189,7 +189,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         }
         
         while let path = enumerator.nextObject() as? String {
-            if let meta = getMeta(path) where meta.expiration.isExpired {
+            if let meta = getMeta(path) where meta.policy.isExpired {
                 remove(path)
             }
         }

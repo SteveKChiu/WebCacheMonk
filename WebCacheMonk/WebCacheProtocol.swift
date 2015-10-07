@@ -82,7 +82,7 @@ public class WebCacheProtocol : NSURLProtocol {
             }
         }
         
-        dataSource.fetch(url.absoluteString, offset: offset, length: length, expired: .Default, progress: self.progress, receiver: WebCacheProtocolReceiver(self))
+        dataSource.fetch(url.absoluteString, offset: offset, length: length, policy: .Default, progress: self.progress, receiver: WebCacheProtocolReceiver(self))
     }
      
     public override func stopLoading() {

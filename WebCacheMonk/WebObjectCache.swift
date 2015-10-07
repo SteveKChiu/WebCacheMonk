@@ -90,7 +90,7 @@ public class WebObjectCache<OBJECT> {
         return self.evaluator?(object) ?? 0
     }
     
-    public func fetch(url: String, tag: String? = nil, options: [String: Any]? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, completion: (OBJECT?) -> Void) {
+    public func fetch(url: String, tag: String? = nil, options: [String: Any]? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, completion: (OBJECT?) -> Void) {
         dispatch_async(self.queue) {
             if let entry = self.cache.objectForKey(url) as? WebObjectEntry {
                 if let object = entry.get(tag) as? OBJECT {
@@ -118,7 +118,7 @@ public class WebObjectCache<OBJECT> {
                 }
             }
             
-            self.dataSource.fetch(url, offset: nil, length: nil, expired: expired, progress: progress, receiver: receiver)
+            self.dataSource.fetch(url, offset: nil, length: nil, policy: policy, progress: progress, receiver: receiver)
         }
     }
     
@@ -145,12 +145,12 @@ public class WebObjectCache<OBJECT> {
         }
     }
     
-    public func change(url: String, expired: WebCacheExpiration) {
+    public func change(url: String, policy: WebCachePolicy) {
         dispatch_async(self.queue) {
-            if expired.isExpired {
+            if policy.isExpired {
                 self.remove(url)
             } else if let sourceStore = self.dataSource as? WebCacheMutableStore {
-                sourceStore.change(url, expired: expired)
+                sourceStore.change(url, policy: policy)
             }
         }
     }

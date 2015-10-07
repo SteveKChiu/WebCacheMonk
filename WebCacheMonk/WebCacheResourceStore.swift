@@ -156,7 +156,7 @@ public class WebCacheResourceStore : WebCacheStore {
         return "application/octet-stream"
     }
 
-    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         dispatch_async(self.queue) {
             receiver.onReceiveInited(response: nil, progress: progress)
         
@@ -187,7 +187,7 @@ public class WebCacheResourceStore : WebCacheStore {
             
             let info = WebCacheInfo(mimeType: self.getMimeType(path))
             info.totalLength = totalLength
-            
+
             if let assetData = assetData {
                 self.transferData(info, data: assetData, offset: offset, length: length, progress: progress, receiver: receiver)
             } else {
@@ -195,11 +195,11 @@ public class WebCacheResourceStore : WebCacheStore {
                     receiver.onReceiveAborted(WebCacheError("WebCacheMonk.InvalidResource", url: url))
                     return
                 }
-            
+                
                 defer {
                     input.closeFile()
                 }
-
+                
                 self.transferFile(info, file: input, offset: offset, length: length, progress: progress, receiver: receiver)
             }
         }
@@ -209,7 +209,7 @@ public class WebCacheResourceStore : WebCacheStore {
         if progress?.totalUnitCount < 0 {
             progress?.totalUnitCount = length
         }
-            
+
         receiver.onReceiveStarted(info, offset: offset, length: length)
         
         if length < info.totalLength {
@@ -227,7 +227,7 @@ public class WebCacheResourceStore : WebCacheStore {
         if progress?.totalUnitCount < 0 {
             progress?.totalUnitCount = length
         }
-            
+
         receiver.onReceiveStarted(info, offset: offset, length: length)
         file.seekToFileOffset(UInt64(offset))
         

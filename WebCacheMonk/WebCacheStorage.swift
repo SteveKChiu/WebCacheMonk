@@ -29,15 +29,15 @@ import Foundation
 //---------------------------------------------------------------------------
 
 public class WebCacheStorageInfo : WebCacheInfo {
-    public var expiration: WebCacheExpiration
+    public var policy: WebCachePolicy
     
-    public init(mimeType: String?, expired: WebCacheExpiration = .Default) {
-        self.expiration = expired
+    public init(mimeType: String?, policy: WebCachePolicy = .Default) {
+        self.policy = policy
         super.init(mimeType: mimeType)
     }
 
-    public init(from: WebCacheInfo, expired: WebCacheExpiration = .Default) {
-        self.expiration = expired
+    public init(from: WebCacheInfo, policy: WebCachePolicy = .Default) {
+        self.policy = policy
         super.init(from: from)
     }
 }
@@ -106,12 +106,12 @@ public extension WebCacheStorageAdapter {
             let meta = WebCacheStorageInfo(mimeType: json["m"] as? String)
             meta.textEncoding = json["t"] as? String
             meta.totalLength = (json["l"] as? NSNumber)?.longLongValue
-            meta.expiration = .Description(json["e"] as? String)
+            meta.policy = .Description(json["p"] as? String)
             if let headers = json["h"] as? [String: String] {
                 meta.headers = headers
             }
             
-            if meta.expiration.isExpired {
+            if meta.policy.isExpired {
                 _ = try? self.fileManager.removeItemAtPath(path)
                 return nil
             }
@@ -130,7 +130,7 @@ public extension WebCacheStorageAdapter {
         if let totalLength = meta.totalLength {
             json["l"] = NSNumber(longLong: totalLength)
         }
-        json["e"] = meta.expiration.description
+        json["e"] = meta.policy.description
         json["h"] = meta.headers
         
         do {
@@ -164,7 +164,7 @@ public class WebCacheStorage : WebCacheMutableStore {
         dispatch_async(self.queue, block)
     }
 
-    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, expired: WebCacheExpiration = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         perform() {
             do {
                 receiver.onReceiveInited(response: nil, progress: progress)
@@ -234,15 +234,15 @@ public class WebCacheStorage : WebCacheMutableStore {
         }
     }
     
-    public func store(url: String, expired: WebCacheExpiration = .Default) -> WebCacheReceiver? {
-        return WebCacheStorageReceiver(url: url, expired: expired, store: self)
+    public func store(url: String, policy: WebCachePolicy = .Default) -> WebCacheReceiver? {
+        return WebCacheStorageReceiver(url: url, policy: policy, store: self)
     }
     
-    public func change(url: String, expired: WebCacheExpiration) {
+    public func change(url: String, policy: WebCachePolicy) {
         perform() {
             let (path, _) = self.adapter.getPath(url)
-            if let meta = self.adapter.getMeta(path) where meta.expiration != expired {
-                meta.expiration = expired
+            if let meta = self.adapter.getMeta(path) where meta.policy != policy {
+                meta.policy = policy
                 self.adapter.setMeta(path, meta: meta)
             }
         }
@@ -267,8 +267,8 @@ public class WebCacheStorage : WebCacheMutableStore {
         }
     }
     
-    public func addGroup(url: String, expired: WebCacheExpiration = .Default) {
-        addGroup(url, tag: ["expired": expired])
+    public func addGroup(url: String, policy: WebCachePolicy = .Default) {
+        addGroup(url, tag: ["policy": policy])
     }
 
     public func addGroup(url: String, tag: [String: Any]?) {
@@ -289,13 +289,13 @@ public class WebCacheStorage : WebCacheMutableStore {
 private class WebCacheStorageReceiver : WebCacheReceiver {
     private var store: WebCacheStorage
     private var semaphore: dispatch_semaphore_t
-    private var expiration: WebCacheExpiration
+    private var policy: WebCachePolicy
     private var url: String
     private var output: WebCacheOutputStream?
     
-    init(url: String, expired: WebCacheExpiration, store: WebCacheStorage) {
+    init(url: String, policy: WebCachePolicy, store: WebCacheStorage) {
         self.url = url
-        self.expiration = expired
+        self.policy = policy
         self.store = store
         self.semaphore = dispatch_semaphore_create(4)
     }
@@ -310,14 +310,14 @@ private class WebCacheStorageReceiver : WebCacheReceiver {
                 let adapter = self.store.adapter
                 let (path, tag) = adapter.getPath(self.url)
                 
-                if case WebCacheExpiration.Default = self.expiration {
-                    if let expired = tag?["expired"] as? WebCacheExpiration {
-                        self.expiration = expired
+                if case WebCachePolicy.Default = self.policy {
+                    if let policy = tag?["policy"] as? WebCachePolicy {
+                        self.policy = policy
                     }
                 }
                 
-                if !self.expiration.isExpired {
-                    let meta = WebCacheStorageInfo(from: info, expired: self.expiration)
+                if !self.policy.isExpired {
+                    let meta = WebCacheStorageInfo(from: info, policy: self.policy)
                     self.output = try adapter.openOutputStream(path, tag: tag, meta: meta, offset: offset)
                 }
             } catch {
