@@ -169,11 +169,7 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
         return WebCacheDataReceiver(url: url, acceptPartial: false, sizeLimit: self.cache.totalCostLimit / 4) {
             receiver in
             
-            if receiver.error != nil || receiver.progress?.cancelled == true {
-                return
-            }
-            
-            if let buffer = receiver.buffer, info = receiver.info {
+            if let buffer = receiver.buffer, info = receiver.info where receiver.progress?.cancelled != true {
                 self.store(url, info: info, policy: policy, data: NSData(data: buffer))
             }
         }

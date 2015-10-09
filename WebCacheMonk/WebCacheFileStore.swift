@@ -137,8 +137,9 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         }
         
         let fileSize = Int64(input.seekToEndOfFile())
+        let totalLength = meta.totalLength ?? fileSize
         let offset = offset ?? 0
-        let length = length ?? (fileSize - offset)
+        let length = length ?? (totalLength - offset)
         
         if offset + length > fileSize {
             input.closeFile()
@@ -150,19 +151,15 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     }
     
     public func openOutputStream(path: String, tag: [String: Any]?, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream? {
-        if let storedMeta = getMeta(path) {
-            if meta != storedMeta && offset != 0 {
+        if offset == 0 {
+            setMeta(path, meta: meta)
+        } else if let storedMeta = getMeta(path) {
+            if meta != storedMeta {
                 remove(path)
                 return nil
             }
         } else {
-            if offset != 0 {
-                return nil
-            }
-        }
-        
-        if offset == 0 {
-            setMeta(path, meta: meta)
+            return nil
         }
         
         guard let handle = NSFileHandle(forWritingAtPath: path) else {
