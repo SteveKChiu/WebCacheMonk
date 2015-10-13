@@ -103,7 +103,7 @@ public class WebCache : WebCacheMutableStore {
     }
 
     public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
-        if case .Refresh = policy {
+        if case .Update = policy {
             self.fetchSource(url, offset: offset, length: length, policy: policy, progress: progress, receiver: receiver) {
                 self.fetchStore(url, offset: offset, length: length, policy: policy, progress: progress, receiver: receiver, fallback: nil)
             }
@@ -161,7 +161,7 @@ public class WebCache : WebCacheMutableStore {
     }
 
     public func prefetch(url: String, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, completion: ((Bool) -> Void)? = nil) {
-        if case .Refresh = policy {
+        if case .Update = policy {
             self.prefetchSource(url, policy: policy, progress: progress, completion: completion) {
                 self.prefetchStore(url, progress: progress, completion: completion) {
                     completion?(false)

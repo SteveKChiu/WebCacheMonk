@@ -30,8 +30,8 @@ import Foundation
 
 public enum WebCachePolicy {
     case Default
-    case Refresh
     case Keep
+    case Update
     case Expired(NSTimeInterval)
     
     public static func ExpiredInSeconds(seconds: Double) -> WebCachePolicy {
@@ -55,15 +55,22 @@ public enum WebCachePolicy {
     }
     
     public static func Description(string: String?) -> WebCachePolicy {
-        if let string = string,
-               time = Double(string) {
-            return .Expired(time)
+        if let string = string {
+            if string == "keep" {
+                return .Keep
+            } else if string == "update" {
+                return .Update
+            } else if let time = Double(string) {
+                return .Expired(time)
+            }
         }
         return .Keep
     }
     
     public var description: String {
         switch self {
+        case .Update:
+            return "update"
         case let .Expired(time):
             return String(time)
         default:
@@ -84,21 +91,21 @@ public enum WebCachePolicy {
 //---------------------------------------------------------------------------
 
 public func == (lhs: WebCachePolicy, rhs: WebCachePolicy) -> Bool {
-    switch lhs {
-    case .Default, .Refresh, .Keep:
-        switch rhs {
-        case .Default, .Refresh, .Keep:
-            return true
-        default:
-            return false
-        }
-    case let .Expired(a):
-        switch rhs {
-        case let .Expired(b):
-            return a == b
-        default:
-            return false
-        }
+    switch (lhs, rhs) {
+    case (.Default, .Default):
+        return true
+    case (.Keep, .Keep):
+        return true
+    case (.Default, .Keep):
+        return true
+    case (.Keep, .Default):
+        return true
+    case (.Update, .Update):
+        return true
+    case let (.Expired(a), .Expired(b)):
+        return a == b
+    default:
+        return false
     }
 }
 
