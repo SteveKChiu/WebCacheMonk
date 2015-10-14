@@ -130,7 +130,7 @@ public extension WebCacheStorageAdapter {
         if let totalLength = meta.totalLength {
             json["l"] = NSNumber(longLong: totalLength)
         }
-        json["e"] = meta.policy.description
+        json["p"] = meta.policy.description
         json["h"] = meta.headers
         
         do {
