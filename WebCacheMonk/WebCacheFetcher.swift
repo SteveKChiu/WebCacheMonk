@@ -44,12 +44,12 @@ public class WebCacheFetcher : WebCacheSource {
         
         if let offset = offset {
             if let length = length {
-                request.setValue(String(format: "bytes=%d-%d", offset, offset + length - 1), forHTTPHeaderField: "Range")
+                request.setValue("bytes=\(offset)-\(offset + length - 1)", forHTTPHeaderField: "Range")
             } else {
-                request.setValue(String(format: "bytes=%d-", offset), forHTTPHeaderField: "Range")
+                request.setValue("bytes=\(offset)-", forHTTPHeaderField: "Range")
             }
         } else if let length = length {
-            request.setValue(String(format: "bytes=0-", length - 1), forHTTPHeaderField: "Range")
+            request.setValue("bytes=0-\(length - 1)", forHTTPHeaderField: "Range")
         }
         
         NSURLProtocol.setProperty("WebCacheFetcher", forKey: "WebCache", inRequest: request)
