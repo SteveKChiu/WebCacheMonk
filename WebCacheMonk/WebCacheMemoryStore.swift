@@ -124,10 +124,10 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
         }
     }
 
-    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, completion: (WebCacheInfo?, NSData?) -> Void) {
         dispatch_async(self.queue) {
-            guard let (_, data) = self.fetch(url, offset: offset, length: length) else {
-                completion(nil)
+            guard let (info, data) = self.fetch(url, offset: offset, length: length) else {
+                completion(nil, nil)
                 return
             }
 
@@ -136,21 +136,21 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
                 progress?.totalUnitCount = length
             }
             
-            completion(data)
+            completion(info.meta, data)
             progress?.completedUnitCount += length
         }
     }
 
-    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Int64?) -> Void) {
+    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (WebCacheInfo?, Int64?) -> Void) {
         dispatch_async(self.queue) {
             guard let info = self.cache.objectForKey(url) as? WebCacheDataInfo else {
-                completion(nil)
+                completion(nil, nil)
                 return
             }
         
             if info.meta.policy.isExpired {
                 self.cache.removeObjectForKey(url)
-                completion(nil)
+                completion(nil, nil)
                 return
             }
 
@@ -158,9 +158,9 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
             let offset = offset ?? 0
             let length = length ?? (totalLength - offset)
             if offset + length <= totalLength {
-                completion(totalLength)
+                completion(info.meta, totalLength)
             } else {
-                completion(nil)
+                completion(nil, nil)
             }
         }
     }

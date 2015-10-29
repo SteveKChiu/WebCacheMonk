@@ -215,21 +215,21 @@ public class WebCacheStorage : WebCacheMutableStore {
         }
     }
 
-    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Int64?) -> Void) {
+    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (WebCacheInfo?, Int64?) -> Void) {
         perform() {
             let (path, _) = self.adapter.getPath(url)
-            guard let fileSize = self.adapter.getSize(path)
-                    where self.adapter.getMeta(path) != nil else {
-                completion(nil)
+            guard let fileSize = self.adapter.getSize(path),
+                    info = self.adapter.getMeta(path) else {
+                completion(nil, nil)
                 return
             }
             
             let start = offset ?? 0
             let length = length ?? (fileSize - start)
             if start <= fileSize && length <= fileSize {
-                completion(fileSize)
+                completion(info, fileSize)
             } else {
-                completion(nil)
+                completion(nil, nil)
             }
         }
     }

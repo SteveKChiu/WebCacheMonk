@@ -28,6 +28,26 @@ import Foundation
 
 //---------------------------------------------------------------------------
 
+public class WebCacheNullInputStream : WebCacheInputStream {
+    public init() {
+        // do nothing
+    }
+
+    public var length: Int64 {
+        return 0
+    }
+    
+    public func read(length: Int) -> NSData? {
+        return nil
+    }
+    
+    public func close() {
+        // do nothing
+    }
+}
+
+//---------------------------------------------------------------------------
+
 public class WebCacheFileInputStream : WebCacheInputStream {
     private var handle: NSFileHandle
     private var limit: Int64
@@ -139,11 +159,25 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         let fileSize = Int64(input.seekToEndOfFile())
         let totalLength = meta.totalLength ?? fileSize
         let offset = offset ?? 0
-        let length = length ?? (totalLength - offset)
+        var length = length ?? (totalLength - offset)
+        
+        if length <= 0 {
+            input.closeFile()
+            return (meta, WebCacheNullInputStream())
+        }
         
         if offset + length > fileSize {
-            input.closeFile()
-            return nil
+            if let totalLength = meta.totalLength {
+                if offset < totalLength {
+                    length = totalLength - offset
+                } else {
+                    input.closeFile()
+                    return (meta, WebCacheNullInputStream())
+                }
+            } else {
+                input.closeFile()
+                return nil
+            }
         }
         
         input.seekToFileOffset(UInt64(offset))

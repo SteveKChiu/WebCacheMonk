@@ -33,11 +33,11 @@ public protocol WebCacheSource : class {
 }
 
 public extension WebCacheSource {
-    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, completion: (NSData?) -> Void) {
+    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, completion: (WebCacheInfo?, NSData?) -> Void) {
         self.fetch(url, offset: offset, length: length, policy: policy, progress: progress, receiver: WebCacheDataReceiver(url: url) {
             receiver in
             
-            completion(receiver.buffer)
+            completion(receiver.info, receiver.buffer)
         })
     }
 }
@@ -45,7 +45,7 @@ public extension WebCacheSource {
 //---------------------------------------------------------------------------
 
 public protocol WebCacheStore : WebCacheSource {
-    func check(url: String, offset: Int64?, length: Int64?, completion: (Int64?) -> Void)
+    func check(url: String, offset: Int64?, length: Int64?, completion: (WebCacheInfo?, Int64?) -> Void)
 }
 
 //---------------------------------------------------------------------------
@@ -178,7 +178,7 @@ public class WebCache : WebCacheMutableStore {
 
     private func prefetchStore(url: String, progress: NSProgress?, completion: ((Bool) -> Void)?, fallback: () -> Void) {
         self.check(url) {
-            totalLength in
+            info, totalLength in
             
             if let totalLength = totalLength {
                 if progress?.totalUnitCount < 0 {
@@ -218,16 +218,16 @@ public class WebCache : WebCacheMutableStore {
         })
     }
     
-    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (Int64?) -> Void) {
+    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (WebCacheInfo?, Int64?) -> Void) {
         self.dataStore.check(url, offset: offset, length: length) {
-            totalLength in
+            info, totalLength in
             
-            if let totalLength = totalLength {
-                completion(totalLength)
+            if let info = info, totalLength = totalLength {
+                completion(info, totalLength)
             } else if let sourceStore = self.dataSource as? WebCacheStore {
                 sourceStore.check(url, offset: offset, length: length, completion: completion)
             } else {
-                completion(nil)
+                completion(info, nil)
             }
         }
     }
