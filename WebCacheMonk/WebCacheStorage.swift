@@ -215,18 +215,11 @@ public class WebCacheStorage : WebCacheMutableStore {
         }
     }
 
-    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (WebCacheInfo?, Int64?) -> Void) {
+    public func peek(url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
         perform() {
             let (path, _) = self.adapter.getPath(url)
-            guard let fileSize = self.adapter.getSize(path),
-                    info = self.adapter.getMeta(path) else {
-                completion(nil, nil)
-                return
-            }
-            
-            let start = offset ?? 0
-            let length = length ?? (fileSize - start)
-            if start <= fileSize && length <= fileSize {
+            if let fileSize = self.adapter.getSize(path),
+                   info = self.adapter.getMeta(path) {
                 completion(info, fileSize)
             } else {
                 completion(nil, nil)

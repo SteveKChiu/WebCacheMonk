@@ -141,7 +141,7 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
         }
     }
 
-    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (WebCacheInfo?, Int64?) -> Void) {
+    public func peek(url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
         dispatch_async(self.queue) {
             guard let info = self.cache.objectForKey(url) as? WebCacheDataInfo else {
                 completion(nil, nil)
@@ -154,14 +154,7 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
                 return
             }
 
-            let totalLength = Int64(info.data.length)
-            let offset = offset ?? 0
-            let length = length ?? (totalLength - offset)
-            if offset + length <= totalLength {
-                completion(info.meta, totalLength)
-            } else {
-                completion(nil, nil)
-            }
+            completion(info.meta, Int64(info.data.length))
         }
     }
     

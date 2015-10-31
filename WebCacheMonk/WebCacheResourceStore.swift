@@ -212,7 +212,7 @@ public class WebCacheResourceStore : WebCacheStore {
 
         receiver.onReceiveStarted(info, offset: offset, length: length)
         
-        if length < info.totalLength {
+        if let totalLength = info.totalLength where length < totalLength {
             let data = data.subdataWithRange(NSRange(Int(offset) ..< Int(offset + length)))
             receiver.onReceiveData(data)
         } else {
@@ -243,7 +243,7 @@ public class WebCacheResourceStore : WebCacheStore {
         receiver.onReceiveFinished()
     }
 
-    public func check(url: String, offset: Int64?, length: Int64?, completion: (WebCacheInfo?, Int64?) -> Void) {
+    public func peek(url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
         dispatch_async(self.queue) {
             guard let path = self.getPath(url) else {
                 completion(nil, nil)
@@ -260,15 +260,9 @@ public class WebCacheResourceStore : WebCacheStore {
                 return
             }
             
-            let offset = offset ?? 0
-            let length = length ?? (totalLength - offset)
-            if offset + length <= totalLength {
-                let info = WebCacheInfo(mimeType: self.getMimeType(path))
-                info.totalLength = totalLength
-                completion(info, totalLength)
-            } else {
-                completion(nil, nil)
-            }
+            let info = WebCacheInfo(mimeType: self.getMimeType(path))
+            info.totalLength = totalLength
+            completion(info, totalLength)
         }
     }
 }

@@ -45,7 +45,7 @@ public extension WebCacheSource {
 //---------------------------------------------------------------------------
 
 public protocol WebCacheStore : WebCacheSource {
-    func check(url: String, offset: Int64?, length: Int64?, completion: (WebCacheInfo?, Int64?) -> Void)
+    func peek(url: String, completion: (WebCacheInfo?, Int64?) -> Void)
 }
 
 //---------------------------------------------------------------------------
@@ -177,10 +177,10 @@ public class WebCache : WebCacheMutableStore {
     }
 
     private func prefetchStore(url: String, progress: NSProgress?, completion: ((Bool) -> Void)?, fallback: () -> Void) {
-        self.check(url) {
-            info, totalLength in
+        self.peek(url) {
+            info, length in
             
-            if let totalLength = totalLength {
+            if let totalLength = info?.totalLength where length == totalLength {
                 if progress?.totalUnitCount < 0 {
                     progress?.totalUnitCount = totalLength
                 }
@@ -218,16 +218,16 @@ public class WebCache : WebCacheMutableStore {
         })
     }
     
-    public func check(url: String, offset: Int64? = nil, length: Int64? = nil, completion: (WebCacheInfo?, Int64?) -> Void) {
-        self.dataStore.check(url, offset: offset, length: length) {
-            info, totalLength in
+    public func peek(url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
+        self.dataStore.peek(url) {
+            info, length in
             
-            if let info = info, totalLength = totalLength {
-                completion(info, totalLength)
+            if let info = info, length = length {
+                completion(info, length)
             } else if let sourceStore = self.dataSource as? WebCacheStore {
-                sourceStore.check(url, offset: offset, length: length, completion: completion)
+                sourceStore.peek(url, completion: completion)
             } else {
-                completion(info, nil)
+                completion(nil, nil)
             }
         }
     }

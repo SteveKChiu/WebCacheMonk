@@ -167,7 +167,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         }
         
         if offset + length > fileSize {
-            if let totalLength = meta.totalLength {
+            if let totalLength = meta.totalLength where totalLength <= fileSize {
                 if offset < totalLength {
                     length = totalLength - offset
                 } else {
