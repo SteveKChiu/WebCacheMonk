@@ -85,7 +85,6 @@ public class WebCacheFileOutputStream : WebCacheOutputStream {
     }
     
     public func close() {
-        self.handle.truncateFileAtOffset(self.handle.offsetInFile)
         self.handle.closeFile()
     }
 }
