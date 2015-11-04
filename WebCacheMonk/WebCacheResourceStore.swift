@@ -121,7 +121,7 @@ public class WebCacheResourceStore : WebCacheStore {
             return nil
         }
         
-        let ext = path.substringFromIndex(r.endIndex.advancedBy(1))
+        let ext = path.substringFromIndex(r.endIndex)
         switch ext {
         case "jpg", "jpeg":
             return UIImageJPEGRepresentation(image, 1.0)
