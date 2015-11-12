@@ -49,6 +49,10 @@ public class WebCacheProtocol : NSURLProtocol {
     private var progress: NSProgress?
     private var hasRange = false
     
+    public var cacheControlMaxAge: NSTimeInterval {
+        return  24 * 60 * 60
+    }
+    
     public override func startLoading() {
         guard let client = self.client else {
             return
@@ -87,6 +91,7 @@ public class WebCacheProtocol : NSURLProtocol {
      
     public override func stopLoading() {
         self.progress?.cancel()
+        self.progress = nil
     }
 }
 
@@ -116,10 +121,11 @@ private class WebCacheProtocolReceiver : WebCacheReceiver {
             contentType += "; charset=" + textEncoding
         }
     
+        let maxAge = Int(handler.cacheControlMaxAge)
         var headers = [String: String]()
         headers["Access-Control-Allow-Origin"] = "*"
         headers["Accept-Ranges"] = "bytes"
-        headers["Cache-Control"] = "no-cache"
+        headers["Cache-Control"] = "max-age=\(maxAge)"
         headers["Content-Type"] = contentType
         headers["Content-Encoding"] = "identity"
         
@@ -150,7 +156,7 @@ private class WebCacheProtocolReceiver : WebCacheReceiver {
 
         let response = NSHTTPURLResponse(URL: handler.request.URL!, statusCode: statusCode, HTTPVersion: "HTTP/1.1", headerFields: headers)!
         
-        handler.client?.URLProtocol(handler, didReceiveResponse: response, cacheStoragePolicy: .NotAllowed)
+        handler.client?.URLProtocol(handler, didReceiveResponse: response, cacheStoragePolicy: maxAge == 0 ? .NotAllowed : .AllowedInMemoryOnly)
     }
     
     func onReceiveData(data: NSData) {
