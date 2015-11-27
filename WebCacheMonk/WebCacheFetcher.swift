@@ -38,6 +38,22 @@ public class WebCacheFetcher : WebCacheSource {
     }
 
     public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+        let request = createFetchRequest(url, offset: offset, length: length, policy: policy)
+        NSURLProtocol.setProperty("WebCacheFetcher", forKey: "WebCache", inRequest: request)
+
+        let task = self.session.dataTaskWithRequest(request)
+        let info = WebCacheFetcherInfo(receiver: receiver, progress: progress)
+        
+        progress?.cancellationHandler = {
+            [weak task] in
+            task?.cancel()
+        }
+        
+        task.fetcherInfo = info
+        task.resume()
+    }
+    
+    public func createFetchRequest(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default) -> NSMutableURLRequest {
         let request = NSMutableURLRequest(URL: NSURL(string: url)!)
         request.HTTPMethod = "GET"
         request.setValue("gzip, identity", forHTTPHeaderField: "Accept-Encoding")
@@ -52,19 +68,7 @@ public class WebCacheFetcher : WebCacheSource {
             request.setValue("bytes=0-\(length - 1)", forHTTPHeaderField: "Range")
         }
         
-        NSURLProtocol.setProperty("WebCacheFetcher", forKey: "WebCache", inRequest: request)
-
-        let task = self.session.dataTaskWithRequest(request)
-        let info = WebCacheFetcherInfo(receiver: receiver, progress: progress)
-        
-        progress?.cancellationHandler = {
-            [weak task] in
-            
-            task?.cancel()
-        }
-        
-        task.fetcherInfo = info
-        task.resume()
+        return request
     }
 }
 
