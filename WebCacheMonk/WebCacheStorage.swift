@@ -216,13 +216,20 @@ public class WebCacheStorage : WebCacheMutableStore {
     }
 
     public func peek(url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
+        peek(url) {
+            info, fileSize, filePath in
+            completion(info, fileSize)
+        }
+    }
+    
+    public func peek(url: String, completion: (WebCacheInfo?, Int64?, String?) -> Void) {
         perform() {
             let (path, _) = self.adapter.getPath(url)
             if let fileSize = self.adapter.getSize(path),
                    info = self.adapter.getMeta(path) {
-                completion(info, fileSize)
+                completion(info, fileSize, path)
             } else {
-                completion(nil, nil)
+                completion(nil, nil, nil)
             }
         }
     }
