@@ -27,6 +27,18 @@
 import Foundation
 import MobileCoreServices
 
+private let MIMETYPES: [String: String] = [
+    "html": "text/html",
+    "htm": "text/html",
+    "xml": "text/xml",
+    "css": "text/css",
+    "js": "application/javascript",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpg",
+    "png": "image/png",
+    "gif": "image/gif",
+]
+
 //---------------------------------------------------------------------------
 
 public class WebCacheResourceStore : WebCacheStore {
@@ -147,8 +159,11 @@ public class WebCacheResourceStore : WebCacheStore {
     
     private func getMimeType(path: String) -> String {
         let ext = (path as NSString).pathExtension
-        let UTI = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, ext, nil)!
+        if let mimetype = MIMETYPES[ext] {
+            return mimetype
+        }
         
+        let UTI = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, ext, nil)!
         if let UTIMimeType = UTTypeCopyPreferredTagWithClass(UTI.takeUnretainedValue(), kUTTagClassMIMEType) {
             return UTIMimeType.takeUnretainedValue() as String
         }
