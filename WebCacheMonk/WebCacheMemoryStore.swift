@@ -99,6 +99,17 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
         return (info, data)
     }
 
+    private func setupProgress(progress: NSProgress?, info: WebCacheInfo, offset: Int64, length: Int64) {
+        if progress?.totalUnitCount < 0 {
+            if info.totalLength == offset + length {
+                progress?.totalUnitCount = info.totalLength!
+                progress?.completedUnitCount = offset
+            } else {
+                progress?.totalUnitCount = length
+            }
+        }
+    }
+
     public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
         dispatch_async(self.queue) {
             receiver.onReceiveInited(response: nil, progress: progress)
@@ -110,10 +121,7 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
         
             let offset = offset ?? 0
             let length = Int64(data.length)
-        
-            if progress?.totalUnitCount < 0 {
-                progress?.totalUnitCount = length
-            }
+            self.setupProgress(progress, info: info.meta, offset: offset, length: length)
 
             receiver.onReceiveStarted(info.meta, offset: offset, length: length)
         
@@ -131,10 +139,9 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
                 return
             }
 
+            let offset = offset ?? 0
             let length = Int64(data.length)
-            if progress?.totalUnitCount < 0 {
-                progress?.totalUnitCount = length
-            }
+            self.setupProgress(progress, info: info.meta, offset: offset, length: length)
             
             completion(info.meta, data)
             progress?.completedUnitCount += length

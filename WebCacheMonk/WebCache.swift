@@ -162,21 +162,29 @@ public class WebCache : WebCacheMutableStore {
 
     public func prefetch(url: String, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, completion: ((Bool) -> Void)? = nil) {
         if case .Update = policy {
-            self.prefetchSource(url, policy: policy, progress: progress, completion: completion) {
+            self.prefetchSource(url, offset: nil, length: nil, policy: policy, progress: progress, completion: completion) {
                 self.prefetchStore(url, progress: progress, completion: completion) {
+                    info, length in
                     completion?(false)
                 }
             }
         } else {
             self.prefetchStore(url, progress: progress, completion: completion) {
-                self.prefetchSource(url, policy: policy, progress: progress, completion: completion) {
+                info, currentLength in
+                var offset: Int64?
+                var length: Int64?
+                if let totalLength = info?.totalLength, currentLength = currentLength {
+                    offset = max(0, currentLength - 4096)
+                    length = totalLength - offset!
+                }
+                self.prefetchSource(url, offset: offset, length: length, policy: policy, progress: progress, completion: completion) {
                     completion?(false)
                 }
             }
         }
     }
 
-    private func prefetchStore(url: String, progress: NSProgress?, completion: ((Bool) -> Void)?, fallback: () -> Void) {
+    private func prefetchStore(url: String, progress: NSProgress?, completion: ((Bool) -> Void)?, fallback: (WebCacheInfo?, Int64?) -> Void) {
         self.peek(url) {
             info, length in
             
@@ -187,12 +195,12 @@ public class WebCache : WebCacheMutableStore {
                 progress?.completedUnitCount += totalLength
                 completion?(true)
             } else {
-                fallback()
+                fallback(info, length)
             }
         }
     }
 
-    private func prefetchSource(url: String, policy: WebCachePolicy, progress: NSProgress?, completion: ((Bool) -> Void)?, fallback: () -> Void) {
+    private func prefetchSource(url: String, offset: Int64?, length: Int64?, policy: WebCachePolicy, progress: NSProgress?, completion: ((Bool) -> Void)?, fallback: () -> Void) {
         guard let dataSource = self.dataSource else {
             fallback()
             return
@@ -206,7 +214,7 @@ public class WebCache : WebCacheMutableStore {
             receiver = WebCacheDataReceiver(url: url, sizeLimit: 0)
         }
 
-        dataSource.fetch(url, offset: nil, length: nil, policy: policy, progress: progress, receiver: WebCacheFilter(receiver) {
+        dataSource.fetch(url, offset: offset, length: length, policy: policy, progress: progress, receiver: WebCacheFilter(receiver) {
             found, error, progress in
             
             if found {

@@ -128,10 +128,6 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
             return
         }
         
-        if fetcher.progress?.totalUnitCount < 0 {
-            fetcher.progress?.totalUnitCount = response.expectedContentLength
-        }
-
         var offset: Int64 = 0
         var length: Int64? = response.expectedContentLength == -1 ? nil : response.expectedContentLength
         let info = WebCacheInfo(mimeType: response.MIMEType)
@@ -188,6 +184,15 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
             }
         }
         
+        if fetcher.progress?.totalUnitCount < 0 {
+            if offset + response.expectedContentLength == info.totalLength {
+                fetcher.progress?.totalUnitCount = info.totalLength!
+                fetcher.progress?.completedUnitCount = offset
+            } else {
+                fetcher.progress?.totalUnitCount = response.expectedContentLength
+            }
+        }
+
         receiver.onReceiveStarted(info, offset: offset, length: length)
         completionHandler(.Allow)
     }

@@ -182,7 +182,12 @@ public class WebCacheStorage : WebCacheMutableStore {
                 
                 var length = input.length
                 if progress?.totalUnitCount < 0 {
-                    progress?.totalUnitCount = length
+                    if meta.totalLength == offset + length {
+                        progress?.totalUnitCount = meta.totalLength!
+                        progress?.completedUnitCount = offset
+                    } else {
+                        progress?.totalUnitCount = length
+                    }
                 }
                 
                 if progress?.cancelled == true {
@@ -357,10 +362,6 @@ private class WebCacheStorageReceiver : WebCacheReceiver {
             }
             self.output?.close()
             self.output = nil
-            
-            let adapter = self.store.adapter
-            let (path, _) = adapter.getPath(self.url)
-            adapter.remove(path)
         }
     }
 }

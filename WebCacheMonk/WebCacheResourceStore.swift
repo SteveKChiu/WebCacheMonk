@@ -220,10 +220,19 @@ public class WebCacheResourceStore : WebCacheStore {
         }
     }
 
-    private func transferData(info: WebCacheInfo, data: NSData, offset: Int64, length: Int64, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    private func setupProgress(progress: NSProgress?, info: WebCacheInfo, offset: Int64, length: Int64) {
         if progress?.totalUnitCount < 0 {
-            progress?.totalUnitCount = length
+            if info.totalLength == offset + length {
+                progress?.totalUnitCount = info.totalLength!
+                progress?.completedUnitCount = offset
+            } else {
+                progress?.totalUnitCount = length
+            }
         }
+    }
+
+    private func transferData(info: WebCacheInfo, data: NSData, offset: Int64, length: Int64, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+        setupProgress(progress, info: info, offset: offset, length: length)
 
         receiver.onReceiveStarted(info, offset: offset, length: length)
         
@@ -239,9 +248,7 @@ public class WebCacheResourceStore : WebCacheStore {
     }
 
     private func transferFile(info: WebCacheInfo, file: NSFileHandle, offset: Int64, length: Int64, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
-        if progress?.totalUnitCount < 0 {
-            progress?.totalUnitCount = length
-        }
+        setupProgress(progress, info: info, offset: offset, length: length)
 
         receiver.onReceiveStarted(info, offset: offset, length: length)
         file.seekToFileOffset(UInt64(offset))
