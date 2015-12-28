@@ -32,8 +32,8 @@ public class WebCacheFetcher : WebCacheSource {
     private var session: NSURLSession!
     private var bridge: WebCacheFetcherBridge!
 
-    public init(configuration: NSURLSessionConfiguration? = nil) {
-        self.bridge = WebCacheFetcherBridge(fetcher: self)
+    public init(configuration: NSURLSessionConfiguration? = nil, trustSelfSignedServer: Bool = false) {
+        self.bridge = WebCacheFetcherBridge(trustSelfSignedServer: trustSelfSignedServer)
         self.session = NSURLSession(configuration: configuration ?? NSURLSessionConfiguration.ephemeralSessionConfiguration(), delegate: self.bridge, delegateQueue: nil)
     }
 
@@ -100,10 +100,10 @@ private class WebCacheFetcherInfo : NSObject {
 //---------------------------------------------------------------------------
 
 private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
-    unowned var fetcher: WebCacheFetcher
+    var trustSelfSignedServer: Bool
 
-    init(fetcher: WebCacheFetcher) {
-        self.fetcher = fetcher
+    init(trustSelfSignedServer: Bool) {
+        self.trustSelfSignedServer = trustSelfSignedServer
     }
 
     func abortTask(task: NSURLSessionTask, error: NSError?) {
@@ -221,6 +221,15 @@ private class WebCacheFetcherBridge : NSObject, NSURLSessionDataDelegate {
 
     @objc func URLSession(session: NSURLSession, dataTask: NSURLSessionDataTask, willCacheResponse proposedResponse: NSCachedURLResponse, completionHandler: (NSCachedURLResponse?) -> Void) {
         completionHandler(nil)
+    }
+
+    @objc func URLSession(session: NSURLSession, didReceiveChallenge challenge: NSURLAuthenticationChallenge, completionHandler: (NSURLSessionAuthChallengeDisposition, NSURLCredential?) -> Void) {
+        if self.trustSelfSignedServer && challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust {
+            let credential = NSURLCredential(forTrust: challenge.protectionSpace.serverTrust!)
+            completionHandler(.UseCredential, credential)
+        } else {
+            completionHandler(.PerformDefaultHandling, nil)
+        }
     }
 }
 
