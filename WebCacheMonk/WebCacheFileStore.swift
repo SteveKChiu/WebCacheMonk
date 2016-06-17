@@ -37,7 +37,7 @@ public class WebCacheNullInputStream : WebCacheInputStream {
         return 0
     }
     
-    public func read(length: Int) -> NSData? {
+    public func read(_ length: Int) -> Data? {
         return nil
     }
     
@@ -49,10 +49,10 @@ public class WebCacheNullInputStream : WebCacheInputStream {
 //---------------------------------------------------------------------------
 
 public class WebCacheFileInputStream : WebCacheInputStream {
-    private var handle: NSFileHandle
+    private var handle: FileHandle
     private var limit: Int64
     
-    public init(handle: NSFileHandle, limit: Int64) {
+    public init(handle: FileHandle, limit: Int64) {
         self.handle = handle
         self.limit = limit
     }
@@ -61,9 +61,9 @@ public class WebCacheFileInputStream : WebCacheInputStream {
         return self.limit
     }
     
-    public func read(length: Int) -> NSData? {
-        let data = self.handle.readDataOfLength(length)
-        return data.length == 0 ? nil : data
+    public func read(_ length: Int) -> Data? {
+        let data = self.handle.readData(ofLength: length)
+        return data.count == 0 ? nil : data
     }
     
     public func close() {
@@ -74,14 +74,14 @@ public class WebCacheFileInputStream : WebCacheInputStream {
 //---------------------------------------------------------------------------
 
 public class WebCacheFileOutputStream : WebCacheOutputStream {
-    private var handle: NSFileHandle
+    private var handle: FileHandle
 
-    public init(handle: NSFileHandle) {
+    public init(handle: FileHandle) {
         self.handle = handle
     }
 
-    public func write(data: NSData) {
-        self.handle.writeData(data)
+    public func write(_ data: Data) {
+        self.handle.write(data)
     }
     
     public func close() {
@@ -98,7 +98,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     public init(root: String) {
         do {
             self.root = root.hasSuffix("/") ? root : root + "/"
-            try self.fileManager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
+            try self.fileManager.createDirectory(atPath: self.root, withIntermediateDirectories: true, attributes: nil)
         } catch {
             let error = error as NSError
             if error.domain == NSCocoaErrorDomain && error.code != 516 {
@@ -107,7 +107,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         }
     }
 
-    public func getPath(url: String) -> (path: String, tag: [String: Any]?) {
+    public func getPath(_ url: String) -> (path: String, tag: [String: Any]?) {
         for (group_url, root, tag) in self.groups {
             if url.hasPrefix(group_url) {
                 return (root + getUrlHash(url), tag)
@@ -116,11 +116,11 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         return (self.root + getUrlHash(url), nil)
     }
 
-    public func addGroup(url: String, tag: [String: Any]?) {
+    public func addGroup(_ url: String, tag: [String: Any]?) {
         let root = self.root + getUrlHash(url) + "/"
         let group = (url: url, root: root, tag: tag)
 
-        if let index = self.groups.indexOf({ $0.url == url }) {
+        if let index = self.groups.index(where: { $0.url == url }) {
             self.groups[index] = group
             return
         }
@@ -128,7 +128,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         self.groups.append(group)
 
         do {
-            try self.fileManager.createDirectoryAtPath(root, withIntermediateDirectories: true, attributes: nil)
+            try self.fileManager.createDirectory(atPath: root, withIntermediateDirectories: true, attributes: nil)
         } catch {
             let error = error as NSError
             if error.domain == NSCocoaErrorDomain && error.code != 516 {
@@ -137,21 +137,21 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
         }
     }
     
-    public func removeGroup(url: String) {
-        if let index = self.groups.indexOf({ $0.url == url }) {
-            self.groups.removeAtIndex(index)
+    public func removeGroup(_ url: String) {
+        if let index = self.groups.index(where: { $0.url == url }) {
+            self.groups.remove(at: index)
         }
         
         let group = self.root + getUrlHash(url) + "/"
         remove(group)
     }
 
-    public func openInputStream(path: String, tag: [String: Any]?, offset: Int64, length: Int64?) throws -> (info: WebCacheStorageInfo, input: WebCacheInputStream)? {
+    public func openInputStream(_ path: String, tag: [String: Any]?, offset: Int64, length: Int64?) throws -> (info: WebCacheStorageInfo, input: WebCacheInputStream)? {
         guard let meta = getMeta(path) else {
             return nil
         }
 
-        guard let input = NSFileHandle(forReadingAtPath: path) else {
+        guard let input = FileHandle(forReadingAtPath: path) else {
             return nil
         }
         
@@ -178,12 +178,12 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
                 return nil
             }
         }
-        
-        input.seekToFileOffset(UInt64(offset))
+
+        input.seek(toFileOffset: UInt64(offset))
         return (meta, WebCacheFileInputStream(handle: input, limit: length))
     }
     
-    public func openOutputStream(path: String, tag: [String: Any]?, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream? {
+    public func openOutputStream(_ path: String, tag: [String: Any]?, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream? {
         if offset == 0 {
             setMeta(path, meta: meta)
         } else if let storedMeta = getMeta(path) {
@@ -195,7 +195,7 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
             return nil
         }
         
-        guard let handle = NSFileHandle(forWritingAtPath: path) else {
+        guard let handle = FileHandle(forWritingAtPath: path) else {
             return nil
         }
         
@@ -207,14 +207,14 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
                 return nil
             }
             
-            handle.truncateFileAtOffset(UInt64(offset))
+            handle.truncateFile(atOffset: UInt64(offset))
         }
         
         return WebCacheFileOutputStream(handle: handle)
     }
 
     public func removeExpired() {
-        guard let enumerator = self.fileManager.enumeratorAtPath(self.root) else {
+        guard let enumerator = self.fileManager.enumerator(atPath: self.root) else {
             return
         }
         
@@ -228,8 +228,8 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
     public func removeAll() {
         do {
             self.groups.removeAll()
-            _ = try? self.fileManager.removeItemAtPath(self.root)
-            try self.fileManager.createDirectoryAtPath(self.root, withIntermediateDirectories: true, attributes: nil)
+            _ = try? self.fileManager.removeItem(atPath: self.root)
+            try self.fileManager.createDirectory(atPath: self.root, withIntermediateDirectories: true, attributes: nil)
         } catch {
             let error = error as NSError
             if error.domain == NSCocoaErrorDomain && error.code != 516 {
@@ -244,8 +244,8 @@ public class WebCacheFileStoreAdapter : WebCacheStorageAdapter {
 public class WebCacheFileStore : WebCacheStorage {
     public convenience init(name: String? = nil) {
         let name = name ?? "WebCache"
-        let url = NSFileManager.defaultManager().URLsForDirectory(.CachesDirectory, inDomains: .UserDomainMask).first!
-        let path = url.URLByAppendingPathComponent(name, isDirectory: true).path!
+        let url = FileManager.default().urlsForDirectory(.cachesDirectory, inDomains: .userDomainMask).first!
+        let path = try! url.appendingPathComponent(name, isDirectory: true).path!
         self.init(path: path)
     }
     

@@ -28,67 +28,67 @@ import UIKit
 
 //---------------------------------------------------------------------------
 
-public class WebCacheProtocol : NSURLProtocol {
-    public override class func canInitWithRequest(request: NSURLRequest) -> Bool {
-        guard NSURLProtocol.propertyForKey("WebCache", inRequest: request) == nil else {
+public class WebCacheProtocol : URLProtocol {
+    public override class func canInit(with request: URLRequest) -> Bool {
+        guard URLProtocol.property(forKey: "WebCache", in: request) == nil else {
             return false
         }
         
         return prepareToFetch(request) != nil
     }
     
-    public override class func canonicalRequestForRequest(request: NSURLRequest) -> NSURLRequest {
+    public override class func canonicalRequest(for request: URLRequest) -> URLRequest {
         return request
     }
     
-    public class func prepareToFetch(request: NSURLRequest) -> (NSURL, WebCacheSource)? {
+    public class func prepareToFetch(_ request: URLRequest) -> (URL, WebCacheSource)? {
         // subclass should override this
         return nil
     }
 
-    private var progress: NSProgress?
+    private var progress: Progress?
     private var hasRange = false
     
-    public var cacheControlMaxAge: NSTimeInterval {
+    public var cacheControlMaxAge: TimeInterval {
         return  24 * 60 * 60
     }
-    
+
     public override func startLoading() {
         guard let client = self.client else {
             return
         }
-        
+
         guard let (url, dataSource) = self.dynamicType.prepareToFetch(self.request) else {
-            client.URLProtocol(self, didFailWithError: WebCacheError("WebCacheMonk.InvalidURL", url: self.request.URL?.absoluteString))
+            client.urlProtocol(self, didFailWithError: WebCacheError("WebCacheMonk.InvalidURL", url: self.request.url?.absoluteString))
             return
         }
         
-        self.progress = NSProgress(totalUnitCount: -1)
+        self.progress = Progress(totalUnitCount: -1)
         self.hasRange = false
         
         var offset: Int64?
         var length: Int64?
         
-        if let range = self.request.valueForHTTPHeaderField("Range") {
+        if let range = self.request.value(forHTTPHeaderField: "Range") {
             self.hasRange = true
             let range = range as NSString
-            let rex = try! NSRegularExpression(pattern: "bytes\\s*=\\s*(\\d+)\\-(\\d*)", options: [])
+            let rex = try! RegularExpression(pattern: "bytes\\s*=\\s*(\\d+)\\-(\\d*)", options: [])
             
-            if let result = rex.matchesInString(range as String, options: [], range: NSRange(0 ..< range.length)).first {
+            if let result = rex.matches(in: range as String, options: [], range: NSRange(0 ..< range.length)).first {
                 let n = result.numberOfRanges
                 if n >= 1 {
-                    offset = Int64(range.substringWithRange(result.rangeAtIndex(1)))!
+                    offset = Int64(range.substring(with: result.range(at: 1)))!
                 }
                 if n >= 2 {
-                    let end = Int64(range.substringWithRange(result.rangeAtIndex(2)))!
+                    let end = Int64(range.substring(with: result.range(at: 2)))!
                     length = end - (offset ?? 0) + 1
                 }
             }
         }
         
-        dataSource.fetch(url.absoluteString, offset: offset, length: length, policy: .Default, progress: self.progress, receiver: WebCacheProtocolReceiver(self))
+        dataSource.fetch(url.absoluteString!, offset: offset, length: length, policy: .default, progress: self.progress, receiver: WebCacheProtocolReceiver(self))
     }
-     
+
     public override func stopLoading() {
         self.progress?.cancel()
         self.progress = nil
@@ -99,19 +99,19 @@ public class WebCacheProtocol : NSURLProtocol {
 
 private class WebCacheProtocolReceiver : WebCacheReceiver {
     weak var handler: WebCacheProtocol?
-    var serverResponse: NSHTTPURLResponse?
-    var progress: NSProgress?
+    var serverResponse: HTTPURLResponse?
+    var progress: Progress?
 
     init(_ handler: WebCacheProtocol) {
         self.handler = handler
     }
 
-    func onReceiveInited(response response: NSURLResponse?, progress: NSProgress?) {
-        self.serverResponse = response as? NSHTTPURLResponse
+    func onReceiveInited(response: URLResponse?, progress: Progress?) {
+        self.serverResponse = response as? HTTPURLResponse
         self.progress = progress
     }
     
-    func onReceiveStarted(info: WebCacheInfo, offset: Int64, length: Int64?) {
+    func onReceiveStarted(_ info: WebCacheInfo, offset: Int64, length: Int64?) {
         guard let handler = self.handler else {
             return
         }
@@ -140,7 +140,7 @@ private class WebCacheProtocolReceiver : WebCacheReceiver {
         
         if handler.hasRange {
             guard let totalLength = info.totalLength else {
-               self.onReceiveAborted(WebCacheError("WebCacheMonk.UnknownLength", url: handler.request.URL?.absoluteString))
+               self.onReceiveAborted(WebCacheError("WebCacheMonk.UnknownLength", url: handler.request.url?.absoluteString))
                return
             }
             
@@ -154,30 +154,30 @@ private class WebCacheProtocolReceiver : WebCacheReceiver {
             }
         }
 
-        let response = NSHTTPURLResponse(URL: handler.request.URL!, statusCode: statusCode, HTTPVersion: "HTTP/1.1", headerFields: headers)!
+        let response = HTTPURLResponse(url: handler.request.url!, statusCode: statusCode, httpVersion: "HTTP/1.1", headerFields: headers)!
         
-        handler.client?.URLProtocol(handler, didReceiveResponse: response, cacheStoragePolicy: maxAge == 0 ? .NotAllowed : .AllowedInMemoryOnly)
+        handler.client?.urlProtocol(handler, didReceive: response, cacheStoragePolicy: maxAge == 0 ? .notAllowed : .allowedInMemoryOnly)
     }
     
-    func onReceiveData(data: NSData) {
+    func onReceiveData(_ data: Data) {
         if let handler = self.handler {
-            handler.client?.URLProtocol(handler, didLoadData: data)
+            handler.client?.urlProtocol(handler, didLoad: data)
         }
     }
     
     func onReceiveFinished() {
         if let handler = self.handler {
-            handler.client?.URLProtocolDidFinishLoading(handler)
+            handler.client?.urlProtocolDidFinishLoading(handler)
         }
     }
     
-    func onReceiveAborted(error: NSError?) {
+    func onReceiveAborted(_ error: NSError?) {
         guard let handler = self.handler else {
             return
         }
         
         if let error = error {
-            handler.client?.URLProtocol(handler, didFailWithError: error)
+            handler.client?.urlProtocol(handler, didFailWithError: error)
             return
         }
             
@@ -194,14 +194,14 @@ private class WebCacheProtocolReceiver : WebCacheReceiver {
             }
             headers["Content-Length"] = "0"
             
-            let response = NSHTTPURLResponse(URL: handler.request.URL!, statusCode: serverResponse.statusCode, HTTPVersion: "HTTP/1.1", headerFields: headers)!
+            let response = HTTPURLResponse(url: handler.request.url!, statusCode: serverResponse.statusCode, httpVersion: "HTTP/1.1", headerFields: headers)!
             
-            handler.client?.URLProtocol(handler, didReceiveResponse: response, cacheStoragePolicy: .NotAllowed)
-            handler.client?.URLProtocolDidFinishLoading(handler)
+            handler.client?.urlProtocol(handler, didReceive: response, cacheStoragePolicy: .notAllowed)
+            handler.client?.urlProtocolDidFinishLoading(handler)
             return
         }
         
-        handler.client?.URLProtocol(handler, didFailWithError: WebCacheError("WebCacheMonk.Cancalled", url: handler.request.URL?.absoluteString))
+        handler.client?.urlProtocol(handler, didFailWithError: WebCacheError("WebCacheMonk.Cancalled", url: handler.request.url?.absoluteString))
     }
 }
 

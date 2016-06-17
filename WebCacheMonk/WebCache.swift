@@ -29,14 +29,13 @@ import Foundation
 //---------------------------------------------------------------------------
 
 public protocol WebCacheSource : class {
-    func fetch(url: String, offset: Int64?, length: Int64?, policy: WebCachePolicy, progress: NSProgress?, receiver: WebCacheReceiver)
+    func fetch(_ url: String, offset: Int64?, length: Int64?, policy: WebCachePolicy, progress: Progress?, receiver: WebCacheReceiver)
 }
 
 public extension WebCacheSource {
-    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, completion: (WebCacheInfo?, NSData?) -> Void) {
+    public func fetch(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, completion: (WebCacheInfo?, Data?) -> Void) {
         self.fetch(url, offset: offset, length: length, policy: policy, progress: progress, receiver: WebCacheDataReceiver(url: url) {
-            receiver in
-            
+            (receiver: WebCacheDataReceiver) in
             completion(receiver.info, receiver.buffer)
         })
     }
@@ -45,24 +44,24 @@ public extension WebCacheSource {
 //---------------------------------------------------------------------------
 
 public protocol WebCacheStore : WebCacheSource {
-    func peek(url: String, completion: (WebCacheInfo?, Int64?) -> Void)
+    func peek(_ url: String, completion: (WebCacheInfo?, Int64?) -> Void)
 }
 
 //---------------------------------------------------------------------------
 
 public protocol WebCacheMutableStore : WebCacheStore {
-    func store(url: String, policy: WebCachePolicy) -> WebCacheReceiver?
-    func change(url: String, policy: WebCachePolicy)
-    func remove(url: String)
+    func store(_ url: String, policy: WebCachePolicy) -> WebCacheReceiver?
+    func change(_ url: String, policy: WebCachePolicy)
+    func remove(_ url: String)
     func removeExpired()
     func removeAll()
 }
 
 public extension WebCacheMutableStore {
-    public func store(url: String, info: WebCacheInfo, policy: WebCachePolicy, data: NSData) {
+    public func store(_ url: String, info: WebCacheInfo, policy: WebCachePolicy, data: Data) {
         if let receiver = self.store(url, policy: policy) {
             receiver.onReceiveInited(response: nil, progress: nil)
-            receiver.onReceiveStarted(info, offset: 0, length: Int64(data.length))
+            receiver.onReceiveStarted(info, offset: 0, length: Int64(data.count))
             receiver.onReceiveData(data)
             receiver.onReceiveFinished()
         }
@@ -71,10 +70,10 @@ public extension WebCacheMutableStore {
 
 //---------------------------------------------------------------------------
 
-func WebCacheError(domain: String, url: String?) -> NSError {
+func WebCacheError(_ domain: String, url: String?) -> NSError {
     var userInfo: [NSObject : AnyObject]?
     if let url = url {
-        userInfo = [ NSURLErrorKey: NSURL(string: url)! ]
+        userInfo = [ NSURLErrorKey: URL(string: url)! ]
     }
     return NSError(domain: domain, code: 0, userInfo: userInfo)
 }
@@ -85,13 +84,13 @@ public class WebCache : WebCacheMutableStore {
     private var dataStore: WebCacheStore
     private var dataSource: WebCacheSource?
 
-    public convenience init(name: String? = nil, memoryLimit: Int = 0, configuration: NSURLSessionConfiguration? = nil) {
+    public convenience init(name: String? = nil, memoryLimit: Int = 0, configuration: URLSessionConfiguration? = nil) {
         let store = WebCacheMemoryStore(sizeLimit: memoryLimit)
         let source = WebCacheFileStore(name: name) | WebCacheFetcher(configuration: configuration)
         self.init(store: store, source: source)
     }
 
-    public convenience init(path: String, memoryLimit: Int = 0, configuration: NSURLSessionConfiguration? = nil) {
+    public convenience init(path: String, memoryLimit: Int = 0, configuration: URLSessionConfiguration? = nil) {
         let store = WebCacheMemoryStore(sizeLimit: memoryLimit)
         let source = WebCacheFileStore(path: path) | WebCacheFetcher(configuration: configuration)
         self.init(store: store, source: source)
@@ -102,8 +101,8 @@ public class WebCache : WebCacheMutableStore {
         self.dataSource = source
     }
 
-    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
-        if case .Update = policy {
+    public func fetch(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, receiver: WebCacheReceiver) {
+        if case .update = policy {
             self.fetchSource(url, offset: offset, length: length, policy: policy, progress: progress, receiver: receiver) {
                 self.fetchStore(url, offset: offset, length: length, policy: policy, progress: progress, receiver: receiver, fallback: nil)
             }
@@ -114,13 +113,13 @@ public class WebCache : WebCacheMutableStore {
         }
     }
     
-    private func fetchStore(url: String, offset: Int64?, length: Int64?, policy: WebCachePolicy, progress: NSProgress?, receiver: WebCacheReceiver, fallback: (() -> Void)?) {
+    private func fetchStore(_ url: String, offset: Int64?, length: Int64?, policy: WebCachePolicy, progress: Progress?, receiver: WebCacheReceiver, fallback: (() -> Void)?) {
         var receiver = receiver
         if let fallback = fallback {
             receiver = WebCacheFilter(receiver) {
                 found, error, progress in
                 
-                if found || error != nil || progress?.cancelled == true {
+                if found || error != nil || progress?.isCancelled == true {
                     return false
                 } else {
                     fallback()
@@ -132,7 +131,7 @@ public class WebCache : WebCacheMutableStore {
         self.dataStore.fetch(url, offset: offset, length: length, policy: policy, progress: progress, receiver: receiver)
     }
 
-    private func fetchSource(url: String, offset: Int64?, length: Int64?, policy: WebCachePolicy, progress: NSProgress?, receiver: WebCacheReceiver, fallback: (() -> Void)?) {
+    private func fetchSource(_ url: String, offset: Int64?, length: Int64?, policy: WebCachePolicy, progress: Progress?, receiver: WebCacheReceiver, fallback: (() -> Void)?) {
         guard let dataSource = self.dataSource else {
             fallback?()
             return
@@ -148,7 +147,7 @@ public class WebCache : WebCacheMutableStore {
             receiver = WebCacheFilter(receiver) {
                 found, error, progress in
                 
-                if found || error != nil || progress?.cancelled == true {
+                if found || error != nil || progress?.isCancelled == true {
                     return false
                 } else {
                     fallback()
@@ -160,8 +159,8 @@ public class WebCache : WebCacheMutableStore {
         dataSource.fetch(url, offset: offset, length: length, policy: policy, progress: progress, receiver: receiver)
     }
 
-    public func prefetch(url: String, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, completion: ((Bool) -> Void)? = nil) {
-        if case .Update = policy {
+    public func prefetch(_ url: String, policy: WebCachePolicy = .default, progress: Progress? = nil, completion: ((Bool) -> Void)? = nil) {
+        if case .update = policy {
             self.prefetchSource(url, offset: nil, length: nil, policy: policy, progress: progress, completion: completion) {
                 self.prefetchStore(url, progress: progress, completion: completion) {
                     info, length in
@@ -184,7 +183,7 @@ public class WebCache : WebCacheMutableStore {
         }
     }
 
-    private func prefetchStore(url: String, progress: NSProgress?, completion: ((Bool) -> Void)?, fallback: (WebCacheInfo?, Int64?) -> Void) {
+    private func prefetchStore(_ url: String, progress: Progress?, completion: ((Bool) -> Void)?, fallback: (WebCacheInfo?, Int64?) -> Void) {
         self.peek(url) {
             info, length in
             
@@ -200,7 +199,7 @@ public class WebCache : WebCacheMutableStore {
         }
     }
 
-    private func prefetchSource(url: String, offset: Int64?, length: Int64?, policy: WebCachePolicy, progress: NSProgress?, completion: ((Bool) -> Void)?, fallback: () -> Void) {
+    private func prefetchSource(_ url: String, offset: Int64?, length: Int64?, policy: WebCachePolicy, progress: Progress?, completion: ((Bool) -> Void)?, fallback: () -> Void) {
         guard let dataSource = self.dataSource else {
             fallback()
             return
@@ -226,7 +225,7 @@ public class WebCache : WebCacheMutableStore {
         })
     }
     
-    public func peek(url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
+    public func peek(_ url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
         self.dataStore.peek(url) {
             info, length in
             
@@ -240,18 +239,18 @@ public class WebCache : WebCacheMutableStore {
         }
     }
 
-    public func store(url: String, policy: WebCachePolicy = .Default) -> WebCacheReceiver? {
+    public func store(_ url: String, policy: WebCachePolicy = .default) -> WebCacheReceiver? {
         let dataStore = self.dataStore as? WebCacheMutableStore
         return dataStore?.store(url, policy: policy)
     }
 
-    public func store(url: String, info: WebCacheInfo, policy: WebCachePolicy = .Default, data: NSData) {
+    public func store(_ url: String, info: WebCacheInfo, policy: WebCachePolicy = .default, data: Data) {
         if let dataStore = self.dataStore as? WebCacheMutableStore {
             dataStore.store(url, info: info, policy: policy, data: data)
         }
     }
 
-    public func change(url: String, policy: WebCachePolicy) {
+    public func change(_ url: String, policy: WebCachePolicy) {
         if let dataStore = self.dataStore as? WebCacheMutableStore {
             dataStore.change(url, policy: policy)
         }
@@ -260,7 +259,7 @@ public class WebCache : WebCacheMutableStore {
         }
     }
 
-    public func remove(url: String) {
+    public func remove(_ url: String) {
         if let dataStore = self.dataStore as? WebCacheMutableStore {
             dataStore.remove(url)
         }
@@ -287,7 +286,7 @@ public class WebCache : WebCacheMutableStore {
         }
     }
 
-    public func connect(source: WebCacheSource) {
+    public func connect(_ source: WebCacheSource) {
         if let cache = self.dataSource as? WebCache {
             cache.connect(source)
         } else if let store = self.dataSource as? WebCacheStore {

@@ -29,49 +29,49 @@ import Foundation
 //---------------------------------------------------------------------------
 
 public enum WebCachePolicy {
-    case Default
-    case Keep
-    case Update
-    case Expired(NSTimeInterval)
+    case `default`
+    case keep
+    case update
+    case expired(TimeInterval)
     
-    public static func ExpiredInSeconds(seconds: Double) -> WebCachePolicy {
-        return .Expired(NSDate.timeIntervalSinceReferenceDate() + seconds)
+    public static func ExpiredInSeconds(_ seconds: Double) -> WebCachePolicy {
+        return .expired(Date.timeIntervalSinceReferenceDate + seconds)
     }
 
-    public static func ExpiredInMinutes(minutes: Double) -> WebCachePolicy {
-        return .Expired(NSDate.timeIntervalSinceReferenceDate() + minutes * 60)
+    public static func ExpiredInMinutes(_ minutes: Double) -> WebCachePolicy {
+        return .expired(Date.timeIntervalSinceReferenceDate + minutes * 60)
     }
     
-    public static func ExpiredInHours(hours: Double) -> WebCachePolicy {
-        return .Expired(NSDate.timeIntervalSinceReferenceDate() + hours * (60 * 60))
+    public static func ExpiredInHours(_ hours: Double) -> WebCachePolicy {
+        return .expired(Date.timeIntervalSinceReferenceDate + hours * (60 * 60))
     }
     
-    public static func ExpiredInDays(days: Double) -> WebCachePolicy {
-        return .Expired(NSDate.timeIntervalSinceReferenceDate() + days * (24 * 60 * 60))
+    public static func ExpiredInDays(_ days: Double) -> WebCachePolicy {
+        return .expired(Date.timeIntervalSinceReferenceDate + days * (24 * 60 * 60))
     }
     
-    public static func ExpiredDate(date: NSDate) -> WebCachePolicy {
-        return .Expired(date.timeIntervalSinceReferenceDate)
+    public static func ExpiredDate(_ date: Date) -> WebCachePolicy {
+        return .expired(date.timeIntervalSinceReferenceDate)
     }
     
-    public static func Description(string: String?) -> WebCachePolicy {
+    public static func Description(_ string: String?) -> WebCachePolicy {
         if let string = string {
             if string == "keep" {
-                return .Keep
+                return .keep
             } else if string == "update" {
-                return .Update
+                return .update
             } else if let time = Double(string) {
-                return .Expired(time)
+                return .expired(time)
             }
         }
-        return .Keep
+        return .keep
     }
     
     public var description: String {
         switch self {
-        case .Update:
+        case .update:
             return "update"
-        case let .Expired(time):
+        case let .expired(time):
             return String(time)
         default:
             return "keep"
@@ -80,8 +80,8 @@ public enum WebCachePolicy {
     
     public var isExpired: Bool {
         switch self {
-        case let .Expired(time):
-            return time < NSDate.timeIntervalSinceReferenceDate()
+        case let .expired(time):
+            return time < Date.timeIntervalSinceReferenceDate
         default:
             return false
         }
@@ -92,17 +92,17 @@ public enum WebCachePolicy {
 
 public func == (lhs: WebCachePolicy, rhs: WebCachePolicy) -> Bool {
     switch (lhs, rhs) {
-    case (.Default, .Default):
+    case (.default, .default):
         return true
-    case (.Keep, .Keep):
+    case (.keep, .keep):
         return true
-    case (.Default, .Keep):
+    case (.default, .keep):
         return true
-    case (.Keep, .Default):
+    case (.keep, .default):
         return true
-    case (.Update, .Update):
+    case (.update, .update):
         return true
-    case let (.Expired(a), .Expired(b)):
+    case let (.expired(a), .expired(b)):
         return a == b
     default:
         return false

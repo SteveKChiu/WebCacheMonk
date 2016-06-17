@@ -42,58 +42,58 @@ private let MIMETYPES: [String: String] = [
 //---------------------------------------------------------------------------
 
 public class WebCacheResourceStore : WebCacheStore {
-    private var queue: dispatch_queue_t
+    private var queue: DispatchQueue
     private var mappings = [(url: String, path: String)]()
     
     public init() {
-        self.queue = dispatch_queue_create("WebCacheResourceStore", DISPATCH_QUEUE_SERIAL)
+        self.queue = DispatchQueue(label: "WebCacheResourceStore", attributes: .serial)
     }
     
-    public convenience init(url: String, resource: String, bundle: NSBundle? = nil) {
+    public convenience init(url: String, resource: String, bundle: Bundle? = nil) {
         self.init()
         addMapping(url, resource: resource, bundle: bundle)
     }
 
-    public convenience init(mappings: [(String, String)], bundle: NSBundle? = nil) {
+    public convenience init(mappings: [(String, String)], bundle: Bundle? = nil) {
         self.init()
         for (url, resource) in mappings {
             addMapping(url, resource: resource, bundle: bundle)
         }
     }
 
-    public func addMapping(url: String, resource: String, bundle: NSBundle? = nil) {
+    public func addMapping(_ url: String, resource: String, bundle: Bundle? = nil) {
         let name: String
         let ext: String
-        if let r = resource.rangeOfString(".", options: .BackwardsSearch) {
-            name = resource.substringToIndex(r.startIndex)
-            ext = resource.substringFromIndex(r.endIndex.advancedBy(1))
+        if let r = resource.range(of: ".", options: .backwardsSearch) {
+            name = resource.substring(to: r.lowerBound)
+            ext = resource.substring(from: r.upperBound)
         } else {
             name = resource
             ext = ""
         }
         
-        let bundle = bundle ?? NSBundle.mainBundle()
+        let bundle = bundle ?? Bundle.main()
         if let path = bundle.pathForResource(name, ofType: ext) {
             addMapping(url, path: path)
         }
     }
     
-    public func addMapping(url: String, imageNamed: String) {
+    public func addMapping(_ url: String, imageNamed: String) {
         addMapping(url, entry: "asset://" + imageNamed)
     }
 
-    public func addMapping(url: String, path: String) {
+    public func addMapping(_ url: String, path: String) {
         var isDir: ObjCBool = false
-        if NSFileManager.defaultManager().fileExistsAtPath(path, isDirectory: &isDir) {
+        if FileManager.default().fileExists(atPath: path, isDirectory: &isDir) {
             let path = !isDir || path.hasSuffix("/") ? path : path + "/"
             addMapping(url, entry: path)
         }
     }
     
-    private func addMapping(url: String, entry: String) {
-        dispatch_async(self.queue) {
+    private func addMapping(_ url: String, entry: String) {
+        self.queue.async {
             let mapping = (url: url, path: entry)
-            if let index = self.mappings.indexOf({ $0.url == url }) {
+            if let index = self.mappings.index(where: { $0.url == url }) {
                 self.mappings[index] = mapping
             } else {
                 self.mappings.append(mapping)
@@ -101,39 +101,39 @@ public class WebCacheResourceStore : WebCacheStore {
         }
     }
 
-    public func removeMapping(url: String) {
-        dispatch_async(self.queue) {
-            if let index = self.mappings.indexOf({ $0.url == url }) {
-                self.mappings.removeAtIndex(index)
+    public func removeMapping(_ url: String) {
+        self.queue.async {
+            if let index = self.mappings.index(where: { $0.url == url }) {
+                self.mappings.remove(at: index)
             }
         }
     }
     
-    private func getPath(url: String) -> String? {
+    private func getPath(_ url: String) -> String? {
         for (prefix, root) in self.mappings {
             if url.hasPrefix(prefix) {
-                return root + url.substringFromIndex(url.startIndex.advancedBy(prefix.characters.count))
+                return root + url.substring(from: url.characters.index(url.startIndex, offsetBy: prefix.characters.count))
             }
         }
         return nil
     }
     
-    private func getAssetData(path: String) -> NSData? {
+    private func getAssetData(_ path: String) -> Data? {
         if !path.hasPrefix("asset://") {
             return nil
         }
         
-        let path = path.substringFromIndex(path.startIndex.advancedBy(8))
-        guard let r = path.rangeOfString(".", options: .BackwardsSearch) else {
+        let path = path.substring(from: path.characters.index(path.startIndex, offsetBy: 8))
+        guard let r = path.range(of: ".", options: .backwardsSearch) else {
             return nil
         }
         
-        let name = path.substringToIndex(r.startIndex)
+        let name = path.substring(to: r.lowerBound)
         guard let image = UIImage(named: name) else {
             return nil
         }
         
-        let ext = path.substringFromIndex(r.endIndex)
+        let ext = path.substring(from: r.upperBound)
         switch ext {
         case "jpg", "jpeg":
             return UIImageJPEGRepresentation(image, 1.0)
@@ -146,18 +146,18 @@ public class WebCacheResourceStore : WebCacheStore {
         }
     }
     
-    private func getFileSize(path: String) -> Int64? {
-        guard let attributes = try? NSFileManager.defaultManager().attributesOfItemAtPath(path) else {
+    private func getFileSize(_ path: String) -> Int64? {
+        guard let attributes = try? FileManager.default().attributesOfItem(atPath: path) else {
             return nil
         }
-        if attributes[NSFileType] as? String == NSFileTypeDirectory {
+        if attributes[FileAttributeKey.type.rawValue] as? String == FileAttributeType.typeDirectory.rawValue {
             return nil
         } else {
-            return (attributes[NSFileSize] as? NSNumber)?.longLongValue
+            return (attributes[FileAttributeKey.size.rawValue] as? NSNumber)?.int64Value
         }
     }
     
-    private func getMimeType(path: String) -> String {
+    private func getMimeType(_ path: String) -> String {
         let ext = (path as NSString).pathExtension
         if let mimetype = MIMETYPES[ext] {
             return mimetype
@@ -171,8 +171,8 @@ public class WebCacheResourceStore : WebCacheStore {
         return "application/octet-stream"
     }
 
-    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
-        dispatch_async(self.queue) {
+    public func fetch(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, receiver: WebCacheReceiver) {
+        self.queue.async {
             receiver.onReceiveInited(response: nil, progress: progress)
         
             guard let path = self.getPath(url) else {
@@ -180,11 +180,11 @@ public class WebCacheResourceStore : WebCacheStore {
                 return
             }
             
-            var assetData: NSData?
+            var assetData: Data?
             let totalLength: Int64
             if let data = self.getAssetData(path) {
                 assetData = data
-                totalLength = Int64(data.length)
+                totalLength = Int64(data.count)
             } else if let fileSize = self.getFileSize(path) {
                 totalLength = fileSize
             } else {
@@ -206,7 +206,7 @@ public class WebCacheResourceStore : WebCacheStore {
             if let assetData = assetData {
                 self.transferData(info, data: assetData, offset: offset, length: length, progress: progress, receiver: receiver)
             } else {
-                guard let input = NSFileHandle(forReadingAtPath: path) else {
+                guard let input = FileHandle(forReadingAtPath: path) else {
                     receiver.onReceiveAborted(WebCacheError("WebCacheMonk.InvalidResource", url: url))
                     return
                 }
@@ -220,7 +220,7 @@ public class WebCacheResourceStore : WebCacheStore {
         }
     }
 
-    private func setupProgress(progress: NSProgress?, info: WebCacheInfo, offset: Int64, length: Int64) {
+    private func setupProgress(_ progress: Progress?, info: WebCacheInfo, offset: Int64, length: Int64) {
         if progress?.totalUnitCount < 0 {
             if info.totalLength == offset + length {
                 progress?.totalUnitCount = info.totalLength!
@@ -231,13 +231,13 @@ public class WebCacheResourceStore : WebCacheStore {
         }
     }
 
-    private func transferData(info: WebCacheInfo, data: NSData, offset: Int64, length: Int64, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    private func transferData(_ info: WebCacheInfo, data: Data, offset: Int64, length: Int64, progress: Progress? = nil, receiver: WebCacheReceiver) {
         setupProgress(progress, info: info, offset: offset, length: length)
 
         receiver.onReceiveStarted(info, offset: offset, length: length)
         
         if let totalLength = info.totalLength where length < totalLength {
-            let data = data.subdataWithRange(NSRange(Int(offset) ..< Int(offset + length)))
+            let data = data.subdata(in: Int(offset) ..< Int(offset + length))
             receiver.onReceiveData(data)
         } else {
             receiver.onReceiveData(data)
@@ -247,16 +247,16 @@ public class WebCacheResourceStore : WebCacheStore {
         receiver.onReceiveFinished()
     }
 
-    private func transferFile(info: WebCacheInfo, file: NSFileHandle, offset: Int64, length: Int64, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    private func transferFile(_ info: WebCacheInfo, file: FileHandle, offset: Int64, length: Int64, progress: Progress? = nil, receiver: WebCacheReceiver) {
         setupProgress(progress, info: info, offset: offset, length: length)
 
         receiver.onReceiveStarted(info, offset: offset, length: length)
-        file.seekToFileOffset(UInt64(offset))
+        file.seek(toFileOffset: UInt64(offset))
         
         var length = length
         while length > 0 {
             let size = min(65536, length)
-            let data = file.readDataOfLength(Int(size))
+            let data = file.readData(ofLength: Int(size))
             receiver.onReceiveData(data)
             progress?.completedUnitCount += size
             length -= size
@@ -265,8 +265,8 @@ public class WebCacheResourceStore : WebCacheStore {
         receiver.onReceiveFinished()
     }
 
-    public func peek(url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
-        dispatch_async(self.queue) {
+    public func peek(_ url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
+        self.queue.async {
             guard let path = self.getPath(url) else {
                 completion(nil, nil)
                 return
@@ -274,7 +274,7 @@ public class WebCacheResourceStore : WebCacheStore {
             
             let totalLength: Int64
             if let data = self.getAssetData(path) {
-                totalLength = Int64(data.length)
+                totalLength = Int64(data.count)
             } else if let fileSize = self.getFileSize(path) {
                 totalLength = fileSize
             } else {

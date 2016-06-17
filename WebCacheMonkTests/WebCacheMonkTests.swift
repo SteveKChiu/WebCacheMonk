@@ -33,7 +33,7 @@ class WebCacheMonkTests: XCTestCase {
     
     func testFetch() {
         let cache = WebCache()
-        let expect = expectationWithDescription("fetch")
+        let expect = expectation(withDescription: "fetch")
     
         cache.fetch("http://cdn.akamai.steamstatic.com/steam/apps/352460/capsule_616x353.jpg") {
             data in
@@ -48,7 +48,7 @@ class WebCacheMonkTests: XCTestCase {
             }
         }
         
-        waitForExpectationsWithTimeout(999) {
+        waitForExpectations(withTimeout: 999) {
             error in
             
             XCTAssertNil(error, "Error")

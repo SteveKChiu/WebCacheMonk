@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
 
   s.name         = "WebCacheMonk"
-  s.version      = "0.9.3"
+  s.version      = "0.9.5"
 
   s.summary      = "A generic and extensible web cache library for Swift"
   s.description  = <<-DESC
@@ -17,7 +17,7 @@ Pod::Spec.new do |s|
   s.license      = { :type => "MIT", :file => "LICENSE" }
   s.author       = { "Steve K. Chiu" => "steve.k.chiu@gmail.com" }
 
-  s.ios.deployment_target = "8.0"
+  s.ios.deployment_target = "9.0"
   s.source       = { :git => "https://github.com/SteveKChiu/WebCacheMonk.git", :tag => "v" + s.version.to_s }
   s.source_files = "WebCacheMonk", "WebCacheMonk/**/*.{swift}"
   s.frameworks   = "Foundation", "UIKit"

@@ -31,12 +31,12 @@ import Foundation
 public class WebCacheStorageInfo : WebCacheInfo {
     public var policy: WebCachePolicy
     
-    public init(mimeType: String?, policy: WebCachePolicy = .Default) {
+    public init(mimeType: String?, policy: WebCachePolicy = .default) {
         self.policy = policy
         super.init(mimeType: mimeType)
     }
 
-    public init(from: WebCacheInfo, policy: WebCachePolicy = .Default) {
+    public init(from: WebCacheInfo, policy: WebCachePolicy = .default) {
         self.policy = policy
         super.init(from: from)
     }
@@ -46,53 +46,53 @@ public class WebCacheStorageInfo : WebCacheInfo {
 
 public protocol WebCacheInputStream : class {
     var length: Int64 { get }
-    func read(length: Int) throws -> NSData?
+    func read(_ length: Int) throws -> Data?
     func close()
 }
 
 public protocol WebCacheOutputStream : class {
-    func write(data: NSData) throws
+    func write(_ data: Data) throws
     func close()
 }
 
 //---------------------------------------------------------------------------
 
 public protocol WebCacheStorageAdapter : class {
-    func getPath(url: String) -> (path: String, tag: [String: Any]?)
-    func addGroup(url: String, tag: [String: Any]?)
-    func removeGroup(url: String)
+    func getPath(_ url: String) -> (path: String, tag: [String: Any]?)
+    func addGroup(_ url: String, tag: [String: Any]?)
+    func removeGroup(_ url: String)
     
-    func getSize(path: String) -> Int64?
-    func getMeta(path: String) -> WebCacheStorageInfo?
-    func setMeta(path: String, meta: WebCacheStorageInfo)
+    func getSize(_ path: String) -> Int64?
+    func getMeta(_ path: String) -> WebCacheStorageInfo?
+    func setMeta(_ path: String, meta: WebCacheStorageInfo)
 
-    func openInputStream(path: String, tag: [String: Any]?, offset: Int64, length: Int64?) throws -> (info: WebCacheStorageInfo, input: WebCacheInputStream)?
-    func openOutputStream(path: String, tag: [String: Any]?, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream?
+    func openInputStream(_ path: String, tag: [String: Any]?, offset: Int64, length: Int64?) throws -> (info: WebCacheStorageInfo, input: WebCacheInputStream)?
+    func openOutputStream(_ path: String, tag: [String: Any]?, meta: WebCacheStorageInfo, offset: Int64) throws -> WebCacheOutputStream?
     
-    func remove(path: String)
+    func remove(_ path: String)
     func removeExpired()
     func removeAll()
 }
 
 public extension WebCacheStorageAdapter {
-    public var fileManager: NSFileManager {
-        return NSFileManager.defaultManager()
+    public var fileManager: FileManager {
+        return FileManager.default()
     }
 
-    public func getUrlHash(url: String) -> String {
+    public func getUrlHash(_ url: String) -> String {
         return WebCacheMD5(url)
     }
 
-    public func getSize(path: String) -> Int64? {
+    public func getSize(_ path: String) -> Int64? {
         do {
-            let attributes = try self.fileManager.attributesOfItemAtPath(path)
-            return (attributes[NSFileSize] as? NSNumber)?.longLongValue
+            let attributes = try self.fileManager.attributesOfItem(atPath: path)
+            return (attributes[FileAttributeKey.size.rawValue] as? NSNumber)?.int64Value
         } catch {
             return nil
         }
     }
 
-    public func getMeta(path: String) -> WebCacheStorageInfo? {
+    public func getMeta(_ path: String) -> WebCacheStorageInfo? {
         let size = getxattr(path, "WebCache", nil, 0, 0, 0)
         if size <= 0 {
             return nil
@@ -101,18 +101,18 @@ public extension WebCacheStorageAdapter {
         do {
             let data = NSMutableData(length: size)!
             getxattr(path, "WebCache", data.mutableBytes, size, 0, 0)
-            let json = try NSJSONSerialization.JSONObjectWithData(data, options: [])
+            let json = try JSONSerialization.jsonObject(with: data as Data, options: [])
             
             let meta = WebCacheStorageInfo(mimeType: json["m"] as? String)
             meta.textEncoding = json["t"] as? String
-            meta.totalLength = (json["l"] as? NSNumber)?.longLongValue
+            meta.totalLength = (json["l"] as? NSNumber)?.int64Value
             meta.policy = .Description(json["p"] as? String)
             if let headers = json["h"] as? [String: String] {
                 meta.headers = headers
             }
             
             if meta.policy.isExpired {
-                _ = try? self.fileManager.removeItemAtPath(path)
+                _ = try? self.fileManager.removeItem(atPath: path)
                 return nil
             }
             return meta
@@ -121,50 +121,50 @@ public extension WebCacheStorageAdapter {
         }
     }
     
-    public func setMeta(path: String, meta: WebCacheStorageInfo) {
+    public func setMeta(_ path: String, meta: WebCacheStorageInfo) {
         var json = [String: AnyObject]()
         json["m"] = meta.mimeType
         if let textEncoding = meta.textEncoding {
             json["t"] = textEncoding
         }
         if let totalLength = meta.totalLength {
-            json["l"] = NSNumber(longLong: totalLength)
+            json["l"] = NSNumber(value: totalLength)
         }
         json["p"] = meta.policy.description
         json["h"] = meta.headers
         
         do {
-            if !self.fileManager.fileExistsAtPath(path) {
-                self.fileManager.createFileAtPath(path, contents: nil, attributes: nil)
+            if !self.fileManager.fileExists(atPath: path) {
+                self.fileManager.createFile(atPath: path, contents: nil, attributes: nil)
             }
-            let data = try NSJSONSerialization.dataWithJSONObject(json, options: [])
-            setxattr(path, "WebCache", data.bytes, data.length, 0, 0)
+            let data = try JSONSerialization.data(withJSONObject: json, options: [])
+            setxattr(path, "WebCache", (data as NSData).bytes, data.count, 0, 0)
         } catch {
             NSLog("fail to set meta info, error = %@", error as NSError)
         }
     }
 
-    public func remove(path: String) {
-        _ = try? self.fileManager.removeItemAtPath(path)
+    public func remove(_ path: String) {
+        _ = try? self.fileManager.removeItem(atPath: path)
     }
 }
 
 //---------------------------------------------------------------------------
 
 public class WebCacheStorage : WebCacheMutableStore {
-    private var queue: dispatch_queue_t
+    private var queue: DispatchQueue
     private var adapter: WebCacheStorageAdapter
     
     public init(adapter: WebCacheStorageAdapter) {
-        self.queue = dispatch_queue_create("WebCacheStorage", DISPATCH_QUEUE_SERIAL)
+        self.queue = DispatchQueue(label: "WebCacheStorage", attributes: .serial)
         self.adapter = adapter
     }
     
-    public func perform(block: () -> Void) {
-        dispatch_async(self.queue, block)
+    public func perform(_ block: () -> Void) {
+        self.queue.async(execute: block)
     }
-
-    public func fetch(url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .Default, progress: NSProgress? = nil, receiver: WebCacheReceiver) {
+    
+    public func fetch(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, receiver: WebCacheReceiver) {
         perform() {
             do {
                 receiver.onReceiveInited(response: nil, progress: progress)
@@ -190,7 +190,7 @@ public class WebCacheStorage : WebCacheMutableStore {
                     }
                 }
                 
-                if progress?.cancelled == true {
+                if progress?.isCancelled == true {
                     receiver.onReceiveAborted(nil)
                     return;
                 }
@@ -198,7 +198,7 @@ public class WebCacheStorage : WebCacheMutableStore {
                 receiver.onReceiveStarted(meta, offset: offset, length: length)
                 
                 while length > 0 {
-                    if progress?.cancelled == true {
+                    if progress?.isCancelled == true {
                         receiver.onReceiveAborted(nil)
                         return;
                     }
@@ -209,8 +209,8 @@ public class WebCacheStorage : WebCacheMutableStore {
                     }
                     
                     receiver.onReceiveData(data)
-                    length -= data.length
-                    progress?.completedUnitCount += Int64(data.length)
+                    length -= data.count
+                    progress?.completedUnitCount += Int64(data.count)
                 }
                 
                 receiver.onReceiveFinished()
@@ -220,14 +220,14 @@ public class WebCacheStorage : WebCacheMutableStore {
         }
     }
 
-    public func peek(url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
+    public func peek(_ url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
         peek(url) {
             info, fileSize, filePath in
             completion(info, fileSize)
         }
     }
     
-    public func peek(url: String, completion: (WebCacheInfo?, Int64?, String?) -> Void) {
+    public func peek(_ url: String, completion: (WebCacheInfo?, Int64?, String?) -> Void) {
         perform() {
             let (path, _) = self.adapter.getPath(url)
             if let fileSize = self.adapter.getSize(path),
@@ -238,12 +238,12 @@ public class WebCacheStorage : WebCacheMutableStore {
             }
         }
     }
-    
-    public func store(url: String, policy: WebCachePolicy = .Default) -> WebCacheReceiver? {
+
+    public func store(_ url: String, policy: WebCachePolicy = .default) -> WebCacheReceiver? {
         return WebCacheStorageReceiver(url: url, policy: policy, store: self)
     }
     
-    public func change(url: String, policy: WebCachePolicy) {
+    public func change(_ url: String, policy: WebCachePolicy) {
         perform() {
             let (path, _) = self.adapter.getPath(url)
             if let meta = self.adapter.getMeta(path) where meta.policy != policy {
@@ -253,7 +253,7 @@ public class WebCacheStorage : WebCacheMutableStore {
         }
     }
     
-    public func remove(url: String) {
+    public func remove(_ url: String) {
         perform() {
             let (path, _) = self.adapter.getPath(url)
             self.adapter.remove(path)
@@ -272,17 +272,17 @@ public class WebCacheStorage : WebCacheMutableStore {
         }
     }
     
-    public func addGroup(url: String, policy: WebCachePolicy = .Default) {
+    public func addGroup(_ url: String, policy: WebCachePolicy = .default) {
         addGroup(url, tag: ["policy": policy])
     }
 
-    public func addGroup(url: String, tag: [String: Any]?) {
+    public func addGroup(_ url: String, tag: [String: Any]?) {
         perform() {
             self.adapter.addGroup(url, tag: tag)
         }
     }
 
-    public func removeGroup(url: String) {
+    public func removeGroup(_ url: String) {
         perform() {
             self.adapter.removeGroup(url)
         }
@@ -293,7 +293,7 @@ public class WebCacheStorage : WebCacheMutableStore {
 
 private class WebCacheStorageReceiver : WebCacheReceiver {
     private var store: WebCacheStorage
-    private var semaphore: dispatch_semaphore_t
+    private var semaphore: DispatchSemaphore
     private var policy: WebCachePolicy
     private var url: String
     private var output: WebCacheOutputStream?
@@ -302,20 +302,20 @@ private class WebCacheStorageReceiver : WebCacheReceiver {
         self.url = url
         self.policy = policy
         self.store = store
-        self.semaphore = dispatch_semaphore_create(4)
+        self.semaphore = DispatchSemaphore(value: 4)
     }
     
-    func onReceiveInited(response response: NSURLResponse?, progress: NSProgress?) {
+    func onReceiveInited(response: URLResponse?, progress: Progress?) {
         // do nothing
     }
 
-    func onReceiveStarted(info: WebCacheInfo, offset: Int64, length: Int64?) {
+    func onReceiveStarted(_ info: WebCacheInfo, offset: Int64, length: Int64?) {
         self.store.perform() {
             do {
                 let adapter = self.store.adapter
                 let (path, tag) = adapter.getPath(self.url)
                 
-                if case WebCachePolicy.Default = self.policy {
+                if case WebCachePolicy.default = self.policy {
                     if let policy = tag?["policy"] as? WebCachePolicy {
                         self.policy = policy
                     }
@@ -331,9 +331,9 @@ private class WebCacheStorageReceiver : WebCacheReceiver {
         }
     }
     
-    func onReceiveData(data: NSData) {
+    func onReceiveData(_ data: Data) {
         // to avoid the sender dump the data too fast, to reduce memory usage
-        dispatch_semaphore_wait(self.semaphore, dispatch_time(DISPATCH_TIME_NOW, Int64(NSEC_PER_SEC)))
+        _ = self.semaphore.wait(timeout: DispatchTime.now() + 1)
         
         self.store.perform() {
             do {
@@ -344,7 +344,7 @@ private class WebCacheStorageReceiver : WebCacheReceiver {
                 self.output = nil
             }
             
-            dispatch_semaphore_signal(self.semaphore)
+            self.semaphore.signal()
         }
     }
     
@@ -355,7 +355,7 @@ private class WebCacheStorageReceiver : WebCacheReceiver {
         }
     }
     
-    func onReceiveAborted(error: NSError?) {
+    func onReceiveAborted(_ error: NSError?) {
         self.store.perform() {
             if let error = error {
                 NSLog("fail to receive file for %@, error = %@", self.url, error)

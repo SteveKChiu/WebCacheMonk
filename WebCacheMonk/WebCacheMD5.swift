@@ -31,7 +31,7 @@ import Foundation
 private let shift: [UInt32] = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21]
 private let table: [UInt32] = (0 ..< 64).map { UInt32(0x100000000 * abs(sin(Double($0 + 1)))) }
 
-public func WebCacheMD5(text: String) -> String {
+public func WebCacheMD5(_ text: String) -> String {
     var message = [UInt8](text.utf8)
     let messageLenBits = UInt64(message.count) * 8
     message.append(0x80)
@@ -39,8 +39,8 @@ public func WebCacheMD5(text: String) -> String {
         message.append(0)
     }
     
-    let lengthBytes = [UInt8](count: 8, repeatedValue: 0)
-    UnsafeMutablePointer<UInt64>(lengthBytes).memory = messageLenBits.littleEndian
+    let lengthBytes = [UInt8](repeating: 0, count: 8)
+    UnsafeMutablePointer<UInt64>(lengthBytes).pointee = messageLenBits.littleEndian
     message += lengthBytes
     
     var a: UInt32 = 0x67452301
@@ -48,7 +48,7 @@ public func WebCacheMD5(text: String) -> String {
     var c: UInt32 = 0x98BADCFE
     var d: UInt32 = 0x10325476
     
-    for chunkOffset in 0.stride(to: message.count, by: 64) {
+    for chunkOffset in stride(from: 0, to: message.count, by: 64) {
         let chunk = UnsafePointer<UInt32>(UnsafePointer<UInt8>(message) + chunkOffset)
         let originalA = a
         let originalB = b
