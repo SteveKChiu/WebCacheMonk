@@ -28,23 +28,20 @@ import Foundation
 
 //---------------------------------------------------------------------------
 
-public class WebCacheFetcher : WebCacheSource {
+open class WebCacheFetcher : WebCacheSource {
     private var session: URLSession!
     private var bridge: WebCacheFetcherBridge!
 
     public init(configuration: URLSessionConfiguration? = nil, trustSelfSignedServer: Bool = false) {
         self.bridge = WebCacheFetcherBridge(trustSelfSignedServer: trustSelfSignedServer)
-        self.session = URLSession(configuration: configuration ?? URLSessionConfiguration.ephemeral(), delegate: self.bridge, delegateQueue: nil)
+        self.session = URLSession(configuration: configuration ?? URLSessionConfiguration.ephemeral, delegate: self.bridge, delegateQueue: nil)
     }
 
-    public func fetch(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, receiver: WebCacheReceiver) {
-        var request = createFetchRequest(url, offset: offset, length: length, policy: policy)
-        
-        let r = (request as NSURLRequest).mutableCopy() as! NSMutableURLRequest;
-        URLProtocol.setProperty("WebCacheFetcher", forKey: "WebCache", in: r)
-        request = r as URLRequest;
+    open func fetch(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, receiver: WebCacheReceiver) {
+        let request = createFetchRequest(url, offset: offset, length: length, policy: policy)
+        URLProtocol.setProperty("WebCacheFetcher", forKey: "WebCache", in: request)
 
-        let task = self.session.dataTask(with: request)
+        let task = self.session.dataTask(with: request as URLRequest)
         let info = WebCacheFetcherInfo(receiver: receiver, progress: progress)
         
         progress?.cancellationHandler = {
@@ -56,8 +53,8 @@ public class WebCacheFetcher : WebCacheSource {
         task.resume()
     }
     
-    public func createFetchRequest(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default) -> URLRequest {
-        var request = URLRequest(url: URL(string: url)!)
+    open func createFetchRequest(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default) -> NSMutableURLRequest {
+        let request = NSMutableURLRequest(url: URL(string: url)!)
         request.httpMethod = "GET"
         request.setValue("gzip, identity", forHTTPHeaderField: "Accept-Encoding")
         
@@ -109,14 +106,14 @@ private class WebCacheFetcherBridge : NSObject, URLSessionDataDelegate {
         self.trustSelfSignedServer = trustSelfSignedServer
     }
 
-    func abortTask(_ task: URLSessionTask, error: NSError?) {
+    func abortTask(_ task: URLSessionTask, error: Error?) {
         if let info = task.fetcherInfo {
             info.receiver.onReceiveAborted(error)
             task.fetcherInfo = nil
         }
     }
 
-    @objc func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: (URLSession.ResponseDisposition) -> Void) {
+    @objc func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         guard let fetcher = dataTask.fetcherInfo else {
             completionHandler(.cancel)
             return
@@ -144,18 +141,18 @@ private class WebCacheFetcherBridge : NSObject, URLSessionDataDelegate {
                             
             case 206:
                 if let range = http.allHeaderFields["Content-Range"] as? NSString {
-                    let rex = try! RegularExpression(pattern: "bytes\\s+(\\d+)\\-(\\d+)/(\\d+)", options: [])
+                    let rex = try! NSRegularExpression(pattern: "bytes\\s+(\\d+)\\-(\\d+)/(\\d+)", options: [])
                     if let result = rex.matches(in: range as String, options: [], range: NSRange(0 ..< range.length)).first {
                         let n = result.numberOfRanges
                         if n >= 1 {
-                            offset = Int64(range.substring(with: result.range(at: 1)))!
+                            offset = Int64(range.substring(with: result.rangeAt(1)))!
                         }
                         if n >= 2 {
-                            let end = Int64(range.substring(with: result.range(at: 2)))!
+                            let end = Int64(range.substring(with: result.rangeAt(2)))!
                             length = end - offset + 1
                         }
                         if n >= 3 {
-                            info.totalLength = Int64(range.substring(with: result.range(at: 3)))!
+                            info.totalLength = Int64(range.substring(with: result.rangeAt(3)))!
                         }
                     }
                 }
@@ -177,7 +174,7 @@ private class WebCacheFetcherBridge : NSObject, URLSessionDataDelegate {
             }
             
             for (key, value) in http.allHeaderFields {
-                if let key = key as? String where WebCacheInfo.HeaderKeys.contains(key) {
+                if let key = key as? String, WebCacheInfo.HeaderKeys.contains(key) {
                     if let value = value as? String {
                         info.headers[key] = value
                     } else if let value = value as? NSNumber {
@@ -187,12 +184,12 @@ private class WebCacheFetcherBridge : NSObject, URLSessionDataDelegate {
             }
         }
         
-        if fetcher.progress?.totalUnitCount < 0 {
+        if let progress = fetcher.progress, progress.totalUnitCount < 0 {
             if offset + response.expectedContentLength == info.totalLength {
-                fetcher.progress?.totalUnitCount = info.totalLength!
-                fetcher.progress?.completedUnitCount = offset
+                progress.totalUnitCount = info.totalLength!
+                progress.completedUnitCount = offset
             } else {
-                fetcher.progress?.totalUnitCount = response.expectedContentLength
+                progress.totalUnitCount = response.expectedContentLength
             }
         }
 
@@ -211,7 +208,7 @@ private class WebCacheFetcherBridge : NSObject, URLSessionDataDelegate {
         }
     }
     
-    @objc func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: NSError?) {
+    @objc func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let info = task.fetcherInfo {
             if let error = error {
                 info.receiver.onReceiveAborted(error)
@@ -222,11 +219,11 @@ private class WebCacheFetcherBridge : NSObject, URLSessionDataDelegate {
         }
     }
 
-    @objc func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, willCacheResponse proposedResponse: CachedURLResponse, completionHandler: (CachedURLResponse?) -> Void) {
+    @objc func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, willCacheResponse proposedResponse: CachedURLResponse, completionHandler: @escaping (CachedURLResponse?) -> Void) {
         completionHandler(nil)
     }
 
-    @objc func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+    @objc func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         if self.trustSelfSignedServer && challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust {
             let credential = URLCredential(trust: challenge.protectionSpace.serverTrust!)
             completionHandler(.useCredential, credential)

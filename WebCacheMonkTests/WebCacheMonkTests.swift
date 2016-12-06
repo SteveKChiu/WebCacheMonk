@@ -33,22 +33,22 @@ class WebCacheMonkTests: XCTestCase {
     
     func testFetch() {
         let cache = WebCache()
-        let expect = expectation(withDescription: "fetch")
+        let expect = expectation(description: "fetch")
     
         cache.fetch("http://cdn.akamai.steamstatic.com/steam/apps/352460/capsule_616x353.jpg") {
-            data in
+            info, data in
             
             XCTAssert(data != nil)
             
             cache.fetch("http://cdn.akamai.steamstatic.com/steam/apps/352460/capsule_616x353.jpg") {
-                data2 in
+                info2, data2 in
                 
                 XCTAssert(data2 != nil)
                 expect.fulfill()
             }
         }
         
-        waitForExpectations(withTimeout: 999) {
+        waitForExpectations(timeout: 999) {
             error in
             
             XCTAssertNil(error, "Error")

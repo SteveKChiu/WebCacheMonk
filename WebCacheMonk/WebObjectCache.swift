@@ -28,39 +28,39 @@ import Foundation
 
 //---------------------------------------------------------------------------
 
-public class WebObjectCache<OBJECT> {
+open class WebObjectCache<OBJECT> {
     private var queue: DispatchQueue
-    private let cache = Cache<NSString, WebObjectEntry>()
+    private let cache = NSCache<AnyObject, AnyObject>()
     private let dataSource: WebCacheSource
     
-    public var decoder: ObjectDecoder?
-    public var evaluator: ObjectEvaluator?
+    open var decoder: ObjectDecoder?
+    open var evaluator: ObjectEvaluator?
     
-    public typealias ObjectDecoder = (Data, options: [String: Any]?, completion: (OBJECT?) -> Void) -> Void
+    public typealias ObjectDecoder = (Data, _ options: [String: Any]?, _ completion: (OBJECT?) -> Void) -> Void
     public typealias ObjectEvaluator = (OBJECT) -> Int
     
     public init(name: String? = nil, configuration: URLSessionConfiguration? = nil, decoder: ObjectDecoder?) {
-        self.queue = DispatchQueue(label: "WebObjectCache", attributes: .serial)
+        self.queue = DispatchQueue(label: "WebObjectCache", attributes: [])
         self.dataSource = WebCacheFileStore(name: name) | WebCacheFetcher(configuration: configuration)
         self.decoder = decoder
         self.cache.name = name ?? "WebObjectCache"
     }
 
     public init(path: String, configuration: URLSessionConfiguration? = nil, decoder: ObjectDecoder?) {
-        self.queue = DispatchQueue(label: "WebObjectCache", attributes: .serial)
+        self.queue = DispatchQueue(label: "WebObjectCache", attributes: [])
         self.dataSource = WebCacheFileStore(path: path) | WebCacheFetcher(configuration: configuration)
         self.decoder = decoder
         self.cache.name = "WebObjectCache"
     }
 
     public init(source: WebCacheSource, decoder: ObjectDecoder?) {
-        self.queue = DispatchQueue(label: "WebObjectCache", attributes: .serial)
+        self.queue = DispatchQueue(label: "WebObjectCache", attributes: [])
         self.dataSource = source
         self.decoder = decoder
         self.cache.name = "WebObjectCache"
     }
 
-    public var totalCostLimit: Int {
+    open var totalCostLimit: Int {
         get {
             return self.cache.totalCostLimit
         }
@@ -69,7 +69,7 @@ public class WebObjectCache<OBJECT> {
         }
     }
     
-    public var countLimit: Int {
+    open var countLimit: Int {
         get {
             return self.cache.countLimit
         }
@@ -78,21 +78,21 @@ public class WebObjectCache<OBJECT> {
         }
     }
     
-    public func decode(_ data: Data, options: [String: Any]?, completion: (OBJECT?) -> Void) {
+    open func decode(_ data: Data, options: [String: Any]?, completion: @escaping (OBJECT?) -> Void) {
         if let decoder = self.decoder {
-            decoder(data, options: options, completion: completion)
+            decoder(data, options, completion)
         } else {
             completion(nil)
         }
     }
     
-    public func evaluate(_ object: OBJECT) -> Int {
+    open func evaluate(_ object: OBJECT) -> Int {
         return self.evaluator?(object) ?? 0
     }
     
-    public func fetch(_ url: String, tag: String? = nil, options: [String: Any]? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, completion: (OBJECT?) -> Void) {
+    open func fetch(_ url: String, tag: String? = nil, options: [String: Any]? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, completion: @escaping (OBJECT?) -> Void) {
         self.queue.async {
-            if let entry = self.cache.object(forKey: url) {
+            if let entry = self.cache.object(forKey: url as AnyObject) as? WebObjectEntry {
                 if let object = entry.get(tag) as? OBJECT {
                     completion(object)
                     return
@@ -122,30 +122,30 @@ public class WebObjectCache<OBJECT> {
         }
     }
     
-    public func get(_ url: String, tag: String? = nil) -> OBJECT? {
+    open func get(_ url: String, tag: String? = nil) -> OBJECT? {
         var object: OBJECT?
         self.queue.sync {
-            if let entry = self.cache.object(forKey: url) {
+            if let entry = self.cache.object(forKey: url as AnyObject) as? WebObjectEntry {
                 object = entry.get(tag) as? OBJECT
             }
         }
         return object
     }
     
-    public func set(_ url: String, tag: String? = nil, object: OBJECT) {
+    open func set(_ url: String, tag: String? = nil, object: OBJECT) {
         self.queue.async {
             let cost = self.evaluate(object)
-            if let entry = self.cache.object(forKey: url) {
+            if let entry = self.cache.object(forKey: url as AnyObject) as? WebObjectEntry {
                 entry.set(tag, object: object, cost: cost)
-                self.cache.setObject(entry, forKey: url, cost: entry.cost)
+                self.cache.setObject(entry, forKey: url as AnyObject, cost: entry.cost)
             } else {
                 let entry = WebObjectEntry(tag: tag, object: object, cost: cost)
-                self.cache.setObject(entry, forKey: url, cost: entry.cost)
+                self.cache.setObject(entry, forKey: url as AnyObject, cost: entry.cost)
             }
         }
     }
     
-    public func change(_ url: String, policy: WebCachePolicy) {
+    open func change(_ url: String, policy: WebCachePolicy) {
         self.queue.async {
             if policy.isExpired {
                 self.remove(url)
@@ -155,25 +155,25 @@ public class WebObjectCache<OBJECT> {
         }
     }
     
-    public func remove(_ url: String, tag: String) {
+    open func remove(_ url: String, tag: String) {
         self.queue.async {
-            if let entry = self.cache.object(forKey: url) {
+            if let entry = self.cache.object(forKey: url as AnyObject) as? WebObjectEntry {
                 entry.remove(tag)
-                self.cache.setObject(entry, forKey: url, cost: entry.cost)
+                self.cache.setObject(entry, forKey: url as AnyObject, cost: entry.cost)
             }
         }
     }
 
-    public func remove(_ url: String) {
+    open func remove(_ url: String) {
         self.queue.async {
-            self.cache.removeObject(forKey: url)
+            self.cache.removeObject(forKey: url as AnyObject)
             if let sourceStore = self.dataSource as? WebCacheMutableStore {
                 sourceStore.remove(url)
             }
         }
     }
     
-    public func removeAll() {
+    open func removeAll() {
         self.queue.async {
             self.cache.removeAllObjects()
             if let sourceStore = self.dataSource as? WebCacheMutableStore {

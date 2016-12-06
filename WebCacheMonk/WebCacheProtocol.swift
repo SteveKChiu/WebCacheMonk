@@ -28,8 +28,8 @@ import UIKit
 
 //---------------------------------------------------------------------------
 
-public class WebCacheProtocol : URLProtocol {
-    public override class func canInit(with request: URLRequest) -> Bool {
+open class WebCacheProtocol : URLProtocol {
+    open override class func canInit(with request: URLRequest) -> Bool {
         guard URLProtocol.property(forKey: "WebCache", in: request) == nil else {
             return false
         }
@@ -37,28 +37,28 @@ public class WebCacheProtocol : URLProtocol {
         return prepareToFetch(request) != nil
     }
     
-    public override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+    open override class func canonicalRequest(for request: URLRequest) -> URLRequest {
         return request
     }
     
-    public class func prepareToFetch(_ request: URLRequest) -> (URL, WebCacheSource)? {
+    open class func prepareToFetch(_ request: URLRequest) -> (URL, WebCacheSource)? {
         // subclass should override this
         return nil
     }
 
     private var progress: Progress?
-    private var hasRange = false
+    fileprivate var hasRange = false
     
-    public var cacheControlMaxAge: TimeInterval {
+    open var cacheControlMaxAge: TimeInterval {
         return  24 * 60 * 60
     }
-
-    public override func startLoading() {
+    
+    open override func startLoading() {
         guard let client = self.client else {
             return
         }
-
-        guard let (url, dataSource) = self.dynamicType.prepareToFetch(self.request) else {
+        
+        guard let (url, dataSource) = type(of: self).prepareToFetch(self.request) else {
             client.urlProtocol(self, didFailWithError: WebCacheError("WebCacheMonk.InvalidURL", url: self.request.url?.absoluteString))
             return
         }
@@ -72,24 +72,24 @@ public class WebCacheProtocol : URLProtocol {
         if let range = self.request.value(forHTTPHeaderField: "Range") {
             self.hasRange = true
             let range = range as NSString
-            let rex = try! RegularExpression(pattern: "bytes\\s*=\\s*(\\d+)\\-(\\d*)", options: [])
+            let rex = try! NSRegularExpression(pattern: "bytes\\s*=\\s*(\\d+)\\-(\\d*)", options: [])
             
             if let result = rex.matches(in: range as String, options: [], range: NSRange(0 ..< range.length)).first {
                 let n = result.numberOfRanges
                 if n >= 1 {
-                    offset = Int64(range.substring(with: result.range(at: 1)))!
+                    offset = Int64(range.substring(with: result.rangeAt(1)))!
                 }
                 if n >= 2 {
-                    let end = Int64(range.substring(with: result.range(at: 2)))!
+                    let end = Int64(range.substring(with: result.rangeAt(2)))!
                     length = end - (offset ?? 0) + 1
                 }
             }
         }
         
-        dataSource.fetch(url.absoluteString!, offset: offset, length: length, policy: .default, progress: self.progress, receiver: WebCacheProtocolReceiver(self))
+        dataSource.fetch(url.absoluteString, offset: offset, length: length, policy: .default, progress: self.progress, receiver: WebCacheProtocolReceiver(self))
     }
-
-    public override func stopLoading() {
+     
+    open override func stopLoading() {
         self.progress?.cancel()
         self.progress = nil
     }
@@ -171,7 +171,7 @@ private class WebCacheProtocolReceiver : WebCacheReceiver {
         }
     }
     
-    func onReceiveAborted(_ error: NSError?) {
+    func onReceiveAborted(_ error: Error?) {
         guard let handler = self.handler else {
             return
         }

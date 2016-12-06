@@ -30,10 +30,10 @@ private let DefaultCostLimit = 128 * 1024 * 1024
 
 //---------------------------------------------------------------------------
 
-public class WebImageCache : WebObjectCache<UIImage> {
-    public static var shared = WebImageCache()
+open class WebImageCache : WebObjectCache<UIImage> {
+    open static var shared = WebImageCache()
 
-    public var decompressedCostLimit: Int = 512 * 512 * 4
+    open var decompressedCostLimit: Int = 512 * 512 * 4
 
     public init(name: String? = nil, configuration: URLSessionConfiguration? = nil) {
         super.init(name: name ?? "WebImageCache", configuration: configuration, decoder: nil)
@@ -50,9 +50,9 @@ public class WebImageCache : WebObjectCache<UIImage> {
         self.totalCostLimit = DefaultCostLimit
     }
     
-    public override func decode(_ data: Data, options: [String: Any]?, completion: (UIImage?) -> Void) {
+    open override func decode(_ data: Data, options: [String: Any]?, completion: @escaping (UIImage?) -> Void) {
         if let decoder = self.decoder {
-            decoder(data, options: options, completion: completion)
+            decoder(data, options, completion)
             return
         }
     
@@ -66,12 +66,12 @@ public class WebImageCache : WebObjectCache<UIImage> {
             return
         }
         
-        DispatchQueue.global().async {
+        DispatchQueue.global(qos: DispatchQoS.QoSClass.utility).async {
             var scale: CGFloat = 1
             
             if let options = options,
-                   width = options["width"] as? CGFloat,
-                   height = options["height"] as? CGFloat {
+                   let width = options["width"] as? CGFloat,
+                   let height = options["height"] as? CGFloat {
                 let mode = (options["mode"] as? UIViewContentMode) ?? UIViewContentMode.scaleToFill
                 let widthScale = min(width / image.size.width, 1)
                 let heightScale = min(height / image.size.width, 1)
@@ -93,7 +93,7 @@ public class WebImageCache : WebObjectCache<UIImage> {
         }
     }
 
-    public override func evaluate(_ image: UIImage) -> Int {
+    open override func evaluate(_ image: UIImage) -> Int {
         if let evaluator = self.evaluator {
             return evaluator(image)
         }
@@ -103,7 +103,10 @@ public class WebImageCache : WebObjectCache<UIImage> {
     }
 
     private func decompress(_ image: UIImage, scale: CGFloat) -> UIImage? {
-        let imageRef = image.cgImage!
+        guard let imageRef = image.cgImage else {
+            return image
+        }
+        
         var bitmapInfo = imageRef.bitmapInfo.rawValue
         let alphaInfo = imageRef.alphaInfo
         
@@ -117,7 +120,7 @@ public class WebImageCache : WebObjectCache<UIImage> {
             return image
         }
         
-        let screenScale = UIScreen.main().scale
+        let screenScale = UIScreen.main.scale
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let pixelScale = min(scale * screenScale, image.scale)
         let pixelSize = CGSize(width: image.size.width * pixelScale, height: image.size.height * pixelScale)
@@ -129,8 +132,8 @@ public class WebImageCache : WebObjectCache<UIImage> {
         let imageRect = CGRect(x: 0, y: 0, width: pixelSize.width, height: pixelSize.height)
         UIGraphicsPushContext(context)
         
-        context.translate(x: 0, y: pixelSize.height)
-        context.scale(x: 1.0, y: -1.0)
+        context.translateBy(x: 0, y: pixelSize.height)
+        context.scaleBy(x: 1.0, y: -1.0)
         
         image.draw(in: imageRect)
         UIGraphicsPopContext()
@@ -165,7 +168,7 @@ public extension UIImageView {
             return v?.boolValue ?? false
         }
         set {
-            objc_setAssociatedObject(self, &UIImageView_fetchCompleted, NSNumber(value: newValue), .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(self, &UIImageView_fetchCompleted, NSNumber(value: newValue as Bool), .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
     
@@ -196,7 +199,7 @@ public extension UIImageView {
             return
         }
         
-        if let image = WebImageCache.shared.get(url.absoluteString!, tag: tag) {
+        if let image = WebImageCache.shared.get(url.absoluteString, tag: tag) {
             self.image = image
             self.fetchCompleted = true
             completion?()
@@ -224,7 +227,7 @@ public extension UIImageView {
             }
         }
         
-        WebImageCache.shared.fetch(url.absoluteString!, tag: tag, options: options, progress: self.fetchProgress) {
+        WebImageCache.shared.fetch(url.absoluteString, tag: tag, options: options, progress: self.fetchProgress) {
             image in
 
             DispatchQueue.main.async {

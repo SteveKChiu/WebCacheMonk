@@ -42,19 +42,19 @@ private class WebCacheDataInfo : NSObject {
 
 //---------------------------------------------------------------------------
 
-public class WebCacheMemoryStore : WebCacheMutableStore {
+open class WebCacheMemoryStore : WebCacheMutableStore {
     private var queue: DispatchQueue
-    private var cache: Cache<AnyObject, AnyObject>
+    private var cache: NSCache<AnyObject, AnyObject>
     
     public init(sizeLimit: Int = DEFAULT_SIZE_LIMIT, countLimit: Int = 0) {
-        self.queue = DispatchQueue(label: "WebCacheMemoryStore", attributes: .serial)
-        self.cache = Cache()
+        self.queue = DispatchQueue(label: "WebCacheMemoryStore", attributes: [])
+        self.cache = NSCache()
         self.cache.name = "WebCacheMemoryStore"
         self.cache.totalCostLimit = sizeLimit
         self.cache.countLimit = countLimit
     }
     
-    public var totalCostLimit: Int {
+    open var totalCostLimit: Int {
         get {
             return self.cache.totalCostLimit
         }
@@ -63,7 +63,7 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
         }
     }
     
-    public var countLimit: Int {
+    open var countLimit: Int {
         get {
             return self.cache.countLimit
         }
@@ -73,12 +73,12 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
     }
 
     private func fetch(_ url: String, offset: Int64?, length: Int64?) -> (info: WebCacheDataInfo, data: Data)? {
-        guard let info = self.cache.object(forKey: url) as? WebCacheDataInfo else {
+        guard let info = self.cache.object(forKey: url as AnyObject) as? WebCacheDataInfo else {
             return nil
         }
         
         guard !info.meta.policy.isExpired else {
-            self.cache.removeObject(forKey: url)
+            self.cache.removeObject(forKey: url as AnyObject)
             return nil
         }
         
@@ -100,17 +100,17 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
     }
 
     private func setupProgress(_ progress: Progress?, info: WebCacheInfo, offset: Int64, length: Int64) {
-        if progress?.totalUnitCount < 0 {
+        if let progress = progress, progress.totalUnitCount < 0 {
             if info.totalLength == offset + length {
-                progress?.totalUnitCount = info.totalLength!
-                progress?.completedUnitCount = offset
+                progress.totalUnitCount = info.totalLength!
+                progress.completedUnitCount = offset
             } else {
-                progress?.totalUnitCount = length
+                progress.totalUnitCount = length
             }
         }
     }
 
-    public func fetch(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, receiver: WebCacheReceiver) {
+    open func fetch(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, receiver: WebCacheReceiver) {
         self.queue.async {
             receiver.onReceiveInited(response: nil, progress: progress)
         
@@ -132,7 +132,7 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
         }
     }
 
-    public func fetch(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, completion: (WebCacheInfo?, Data?) -> Void) {
+    open func fetch(_ url: String, offset: Int64? = nil, length: Int64? = nil, policy: WebCachePolicy = .default, progress: Progress? = nil, completion: @escaping (WebCacheInfo?, Data?) -> Void) {
         self.queue.async {
             guard let (info, data) = self.fetch(url, offset: offset, length: length) else {
                 completion(nil, nil)
@@ -148,15 +148,15 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
         }
     }
 
-    public func peek(_ url: String, completion: (WebCacheInfo?, Int64?) -> Void) {
+    open func peek(_ url: String, completion: @escaping (WebCacheInfo?, Int64?) -> Void) {
         self.queue.async {
-            guard let info = self.cache.object(forKey: url) as? WebCacheDataInfo else {
+            guard let info = self.cache.object(forKey: url as AnyObject) as? WebCacheDataInfo else {
                 completion(nil, nil)
                 return
             }
         
             if info.meta.policy.isExpired {
-                self.cache.removeObject(forKey: url)
+                self.cache.removeObject(forKey: url as AnyObject)
                 completion(nil, nil)
                 return
             }
@@ -165,49 +165,49 @@ public class WebCacheMemoryStore : WebCacheMutableStore {
         }
     }
     
-    public func store(_ url: String, policy: WebCachePolicy = .default) -> WebCacheReceiver? {
+    open func store(_ url: String, policy: WebCachePolicy = .default) -> WebCacheReceiver? {
         return WebCacheDataReceiver(url: url, acceptPartial: false, sizeLimit: self.cache.totalCostLimit / 4) {
             receiver in
             
-            if let buffer = receiver.buffer, info = receiver.info where receiver.progress?.isCancelled != true {
+            if let buffer = receiver.buffer, let info = receiver.info, receiver.progress?.isCancelled != true {
                 self.store(url, info: info, policy: policy, data: buffer)
             }
         }
     }
     
-    public func store(_ url: String, info: WebCacheInfo, policy: WebCachePolicy = .default, data: Data) {
-        self.queue.async {
+    open func store(_ url: String, info: WebCacheInfo, policy: WebCachePolicy = .default, data: Data) {
+        self.queue.async(flags: .barrier, execute: {
             if policy.isExpired {
-                self.cache.removeObject(forKey: url)
+                self.cache.removeObject(forKey: url as AnyObject)
                 return
             }
         
             let info = WebCacheDataInfo(from: info, policy: policy, data: data)
-            self.cache.setObject(info, forKey: url, cost: data.count)
-        }
+            self.cache.setObject(info, forKey: url as AnyObject, cost: data.count)
+        }) 
     }
     
-    public func change(_ url: String, policy: WebCachePolicy) {
+    open func change(_ url: String, policy: WebCachePolicy) {
         self.queue.async {
             if policy.isExpired {
-                self.cache.removeObject(forKey: url)
-            } else if let info = self.cache.object(forKey: url) as? WebCacheDataInfo {
+                self.cache.removeObject(forKey: url as AnyObject)
+            } else if let info = self.cache.object(forKey: url as AnyObject) as? WebCacheDataInfo {
                 info.meta.policy = policy
             }
         }
     }
     
-    public func removeExpired() {
+    open func removeExpired() {
         // not supported
     }
     
-    public func remove(_ url: String) {
+    open func remove(_ url: String) {
         self.queue.async {
-            self.cache.removeObject(forKey: url)
+            self.cache.removeObject(forKey: url as AnyObject)
         }
     }
     
-    public func removeAll() {
+    open func removeAll() {
         self.queue.async {
             self.cache.removeAllObjects()
         }

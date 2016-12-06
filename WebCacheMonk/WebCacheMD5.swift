@@ -39,8 +39,8 @@ public func WebCacheMD5(_ text: String) -> String {
         message.append(0)
     }
     
-    let lengthBytes = [UInt8](repeating: 0, count: 8)
-    UnsafeMutablePointer<UInt64>(lengthBytes).pointee = messageLenBits.littleEndian
+    var lengthBytes = [UInt8](repeating: 0, count: 8)
+    UnsafeMutableRawPointer(&lengthBytes).bindMemory(to: UInt64.self, capacity: 1).pointee = messageLenBits.littleEndian
     message += lengthBytes
     
     var a: UInt32 = 0x67452301
@@ -49,7 +49,7 @@ public func WebCacheMD5(_ text: String) -> String {
     var d: UInt32 = 0x10325476
     
     for chunkOffset in stride(from: 0, to: message.count, by: 64) {
-        let chunk = UnsafePointer<UInt32>(UnsafePointer<UInt8>(message) + chunkOffset)
+        let chunk = UnsafeRawPointer(message).advanced(by: chunkOffset).bindMemory(to: UInt32.self, capacity: 16)
         let originalA = a
         let originalB = b
         let originalC = c
